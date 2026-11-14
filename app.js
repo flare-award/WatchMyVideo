@@ -26,8 +26,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const videoFileInput = $('video-file-input');
     const subFileInput = $('sub-file-input');
-    const qualityFileInput = $('quality-file-input');
-    const btnLoadDemo = $('btn-load-demo');
+    const btnCloseVideo = $('btn-close-video');
+    const qualityCanvas = $('quality-canvas');
+    const qualityCtx = qualityCanvas.getContext('2d');
 
     // Controls
     const btnPlayPause = $('btn-play-pause');
@@ -129,8 +130,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const modePillButtons = Array.from(document.querySelectorAll('.mode-pill-btn'));
 
     // ---- State ----
-    const DEMO_VIDEO_URL = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
-    const DEMO_KEY = 'demo:bigbuckbunny';
     const IDLE_DELAY_MS = 1600;
     const ESTIMATED_FPS = 30;
 
@@ -146,18 +145,20 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentVideoKey = null;
     let currentFileName = '';
     let currentFileSize = 0;
-    let currentFileUrl = null; // object URL or demo URL (session-scoped)
+    let currentFileUrl = null; // object URL (session-scoped)
     let pendingSeekTime = null;
-    let wasPlayingBeforeQualitySwitch = false;
 
     // Web Audio — created lazily ONLY when the user enables boost
     let audioCtx = null;
     let sourceNode = null;
     let gainNode = null;
 
-    // Quality management
-    let qualitySources = {};
+    // Quality management — the site renders low tiers itself via a canvas
+    const QUALITY_RUNGS = [144, 240, 360, 480, 720, 1080, 1440, 2160]; // label rungs (px, short side)
+    const QUALITY_ARTIFICIAL = [144, 240, 360, 480, 720, 1080];        // rungs we can synthesize
+    let availableQualities = [{ key: 'original', label: 'Исходное', height: 0, artificial: false }];
     let currentQualityKey = 'original';
+    let qualityProxyOn = false;
 
     // Subtitles
     let subtitleTracks = [];
@@ -368,20 +369,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // =========================================================
-    //  Loading videos (file input / drag & drop / demo)
+    //  Loading videos (file input / drag & drop)
     // =========================================================
-    function revokeBlobUrls(map) {
-        Object.values(map).forEach((url) => {
-            if (typeof url === 'string' && url.startsWith('blob:')) {
-                try { URL.revokeObjectURL(url); } catch (_) { /* ignore */ }
-            }
-        });
-    }
-
-    function startPlaybackSession(sourceUrl, qualityMap, qualityKey, videoKey, fileName, fileSize) {
-        revokeBlobUrls(qualitySources);
-        qualitySources = qualityMap;
-        currentQualityKey = qualityKey;
+    function startPlaybackSession(sourceUrl, videoKey, fileName, fileSize) {
+        stopQualityProxy();
+        qualitiesComputed = false;
+        currentQualityKey = 'original';
         currentVideoKey = videoKey;
         currentFileUrl = sourceUrl;
         currentFileName = fileName || 'Видео';
@@ -396,10 +389,9 @@ document.addEventListener('DOMContentLoaded', () => {
         appShell.classList.remove('hidden');
         replayOverlay.classList.add('hidden');
 
-        const playPromise = video.play();
-        if (playPromise && playPromise.catch) {
-            playPromise.catch(() => updatePlayPauseButton(false));
-        }
+        // Do not auto-start — the video waits for an explicit user action.
+        video.pause();
+        updatePlayPauseButton(false);
 
         updateQualityUI();
         refreshVideoInfo();
@@ -419,22 +411,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const url = URL.createObjectURL(file);
         const key = `file:${file.name}:${file.size}`;
         registerRecentVideo({ key, title: file.name, url, isDemo: false, size: file.size });
-        startPlaybackSession(url, { original: url }, 'original', key, file.name, file.size);
-    }
-
-    function loadDemoVideo() {
-        registerRecentVideo({ key: DEMO_KEY, title: 'Big Buck Bunny — демо (Blender Foundation)', url: DEMO_VIDEO_URL, isDemo: true, size: 0 });
-        startPlaybackSession(DEMO_VIDEO_URL, { original: DEMO_VIDEO_URL }, 'original', DEMO_KEY, 'Big Buck Bunny — демо', 0);
+        startPlaybackSession(url, key, file.name, file.size);
     }
 
     videoFileInput.addEventListener('change', (e) => {
         const file = e.target.files && e.target.files[0];
         if (file) loadVideoFromFile(file);
         e.target.value = '';
-    });
-
-    btnLoadDemo.addEventListener('click', () => {
-        loadDemoVideo();
     });
 
     ['dragenter', 'dragover'].forEach((eventName) => {
@@ -464,6 +447,48 @@ document.addEventListener('DOMContentLoaded', () => {
             loadVideoFromFile(file);
         }
     });
+
+    // =========================================================
+    //  Close current video — back to the dropzone
+    // =========================================================
+    function closeCurrentVideo() {
+        video.pause();
+        stopQualityProxy();
+        video.removeAttribute('src');
+        video.load();
+        currentVideoKey = null;
+        currentFileUrl = null;
+        currentFileName = '';
+        currentFileSize = 0;
+        pendingSeekTime = null;
+        qualitiesComputed = false;
+        currentQualityKey = 'original';
+        availableQualities = [{ key: 'original', label: 'Исходное', height: 0, artificial: false }];
+
+        subtitleTracks = [];
+        currentSubtitleTrackId = 'off';
+        updateSubtitlesMenu();
+        subtitleOverlay.textContent = '';
+
+        currentTimeEl.textContent = '0:00';
+        durationEl.textContent = '0:00';
+        progressPlayed.style.width = '0%';
+        progressScrubber.style.left = '0%';
+        progressBuffered.style.width = '0%';
+        progressContainer.setAttribute('aria-valuenow', '0');
+        loadingSpinner.classList.add('hidden');
+        replayOverlay.classList.add('hidden');
+
+        document.body.classList.remove('idle', 'theater-mode');
+        document.title = 'WatchMyVideo';
+        welcomeScreen.classList.remove('hidden');
+        appShell.classList.add('hidden');
+        updateQualityUI();
+        pokeUI();
+        showToast('Видео закрыто');
+    }
+
+    btnCloseVideo.addEventListener('click', closeCurrentVideo);
 
     // =========================================================
     //  Suggestions feed ("Похожие видео")
@@ -550,13 +575,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
             item.appendChild(thumb);
             item.appendChild(meta);
-            item.addEventListener('click', () => {
-                if (v.isDemo) {
-                    loadDemoVideo();
-                } else {
-                    startPlaybackSession(v.url, { original: v.url }, 'original', v.key, v.title, v.size);
-                }
-            });
+            // Filter out legacy demo entries stored by earlier builds — the demo is gone.
+            if (!v.isDemo) {
+                item.addEventListener('click', () => {
+                    startPlaybackSession(v.url, v.key, v.title, v.size);
+                });
+            } else {
+                item.remove();
+                return;
+            }
             suggestList.appendChild(item);
         });
     }
@@ -643,12 +670,9 @@ document.addEventListener('DOMContentLoaded', () => {
         document.title = `${currentFileName} — WatchMyVideo`;
 
         const handle = slugify(currentFileName);
-        const isDemo = currentVideoKey === DEMO_KEY;
-        tkAvatar.textContent = (isDemo ? 'B' : (handle[0] || 'L')).toUpperCase();
-        tkAuthor.textContent = '@' + (isDemo ? 'bigbuckbunny' : handle);
-        tkDesc.textContent = isDemo
-            ? 'Big Buck Bunny — демо-ролик Blender Foundation. Открывается локально в вашем браузере.'
-            : currentFileName;
+        tkAvatar.textContent = (handle[0] || 'W').toUpperCase();
+        tkAuthor.textContent = '@' + handle;
+        tkDesc.textContent = currentFileName;
         tkMusicText.textContent = `оригинальный звук — ${tkAuthor.textContent}`;
     }
 
@@ -675,8 +699,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let infiniteFixPending = false;
     let infiniteFixGuard = 0;
 
+    let qualitiesComputed = false;
+
     function afterMetadataReady() {
         durationEl.textContent = formatTime(video.duration);
+        if (!qualitiesComputed) {
+            qualitiesComputed = true;
+            computeQualities();
+            updateQualityUI();
+        }
         ytDescriptionText.textContent = buildDescription();
         const active = recentVideos.find((v) => v.key === currentVideoKey);
         if (active) {
@@ -1281,72 +1312,129 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // =========================================================
-    //  Quality
+    //  Quality — the site synthesizes low tiers itself (canvas downscale); the
+    //  original tier is derived from the source resolution.
     // =========================================================
-    function updateQualityUI() {
-        const keys = Object.keys(qualitySources);
-        qualityOptions.innerHTML = '';
-        if (keys.length === 0) {
-            const empty = document.createElement('div');
-            empty.className = 'settings-option inert';
-            empty.textContent = 'Нет источников';
-            qualityOptions.appendChild(empty);
+    function tierLabel(t) {
+        return t >= 2160 ? '4K' : (t >= 1440 ? '2K' : `${t}p`);
+    }
+
+    function masterTierFor(minDim) {
+        let best = null;
+        for (const t of QUALITY_RUNGS) {
+            if (minDim * 1.05 >= t) best = t;
         }
-        keys.forEach((key) => {
+        return best || Math.max(2, Math.floor(minDim));
+    }
+
+    function computeQualities() {
+        stopQualityProxy();
+        const vw = video.videoWidth || 0;
+        const vh = video.videoHeight || 0;
+        const minDim = Math.min(vw, vh);
+        if (!minDim) {
+            availableQualities = [{ key: 'original', label: 'Исходное', height: 0, artificial: false }];
+            currentQualityKey = 'original';
+            return;
+        }
+        const orig = masterTierFor(minDim);
+        const list = [{ key: 'original', label: tierLabel(orig), height: orig, artificial: false }];
+        // Artificial rungs below the original, shown largest first.
+        for (let i = QUALITY_ARTIFICIAL.length - 1; i >= 0; i--) {
+            const t = QUALITY_ARTIFICIAL[i];
+            if (t < orig) {
+                list.push({ key: String(t), label: tierLabel(t), height: t, artificial: true });
+            }
+        }
+        availableQualities = list;
+        currentQualityKey = 'original';
+    }
+
+    function updateQualityUI() {
+        qualityOptions.innerHTML = '';
+        availableQualities.forEach((q) => {
             const opt = document.createElement('div');
-            opt.className = 'settings-option' + (key === currentQualityKey ? ' active' : '');
-            opt.setAttribute('data-quality', key);
-            opt.textContent = key === 'original' ? 'Исходное (Original)' : key;
+            opt.className = 'settings-option' + (q.key === currentQualityKey ? ' active' : '');
+            opt.setAttribute('data-quality', q.key);
+            opt.setAttribute('role', 'menuitem');
+            opt.setAttribute('tabindex', '0');
+            if (q.artificial) {
+                const name = document.createElement('span');
+                name.textContent = q.label;
+                const tag = document.createElement('span');
+                tag.className = 'quality-tag';
+                tag.textContent = 'искусственно';
+                opt.appendChild(name);
+                opt.appendChild(tag);
+            } else {
+                opt.textContent = `${q.label} · оригинал`;
+            }
             opt.addEventListener('click', () => {
-                switchQuality(key);
+                switchQuality(q.key);
                 switchSettingsView(settingsMain);
             });
             qualityOptions.appendChild(opt);
         });
-        setChevronValue(currentQualityLabel, currentQualityKey === 'original' ? 'Исходное' : currentQualityKey);
+        const active = availableQualities.find((q) => q.key === currentQualityKey) || availableQualities[0];
+        setChevronValue(currentQualityLabel, active ? active.label : 'Исходное');
+    }
+
+    function drawQualityFrame() {
+        qualityCtx.imageSmoothingEnabled = true;
+        qualityCtx.imageSmoothingQuality = 'high';
+        qualityCtx.drawImage(video, 0, 0, qualityCanvas.width, qualityCanvas.height);
+    }
+
+    function startQualityProxy(height) {
+        if (!height || !video.videoWidth || !video.videoHeight) return;
+        stopQualityProxy();
+        const minDim = Math.min(video.videoWidth, video.videoHeight);
+        const scale = height / minDim;
+        qualityCanvas.width = Math.max(2, Math.round(video.videoWidth * scale));
+        qualityCanvas.height = Math.max(2, Math.round(video.videoHeight * scale));
+        qualityProxyOn = true;
+        qualityCanvas.classList.add('active');
+        video.classList.add('video-proxied');
+
+        if (typeof video.requestVideoFrameCallback === 'function') {
+            const frame = () => {
+                if (!qualityProxyOn) return;
+                drawQualityFrame();
+                video.requestVideoFrameCallback(frame);
+            };
+            video.requestVideoFrameCallback(frame);
+        } else {
+            const raf = () => {
+                if (!qualityProxyOn) return;
+                drawQualityFrame();
+                requestAnimationFrame(raf);
+            };
+            requestAnimationFrame(raf);
+        }
+        drawQualityFrame();
+    }
+
+    function stopQualityProxy() {
+        qualityProxyOn = false;
+        qualityCanvas.classList.remove('active');
+        video.classList.remove('video-proxied');
     }
 
     function switchQuality(qualityKey) {
-        if (!qualitySources[qualityKey] || qualityKey === currentQualityKey) return;
-        pendingSeekTime = video.currentTime;
-        wasPlayingBeforeQualitySwitch = !video.paused;
+        if (qualityKey === currentQualityKey) return;
+        const target = availableQualities.find((q) => q.key === qualityKey);
+        if (!target) return;
         currentQualityKey = qualityKey;
-        video.src = qualitySources[qualityKey];
-        video.load();
-        if (wasPlayingBeforeQualitySwitch) {
-            video.play().catch(() => updatePlayPauseButton(false));
+        if (target.artificial) {
+            startQualityProxy(target.height);
+        } else {
+            stopQualityProxy();
         }
         updateQualityUI();
     }
 
-    document.querySelector('[data-action="add-quality-file"]').addEventListener('click', () => {
-        qualityFileInput.click();
-    });
-
-    qualityFileInput.addEventListener('change', (e) => {
-        const file = e.target.files && e.target.files[0];
-        e.target.value = '';
-        if (!file) return;
-
-        const probeUrl = URL.createObjectURL(file);
-        const probe = document.createElement('video');
-        probe.preload = 'metadata';
-        probe.muted = true;
-        probe.src = probeUrl;
-
-        probe.addEventListener('loadedmetadata', () => {
-            const h = probe.videoHeight;
-            const key = h ? `${h}p` : `Файл ${Object.keys(qualitySources).length + 1}`;
-            qualitySources[key] = probeUrl;
-            updateQualityUI();
-            showToast(`Файл качества ${key} добавлен`);
-            probe.removeAttribute('src');
-        });
-
-        probe.addEventListener('error', () => {
-            try { URL.revokeObjectURL(probeUrl); } catch (_) { /* ignore */ }
-            showToast('Не удалось прочитать видеофайл');
-        });
+    video.addEventListener('seeked', () => {
+        if (qualityProxyOn) drawQualityFrame();
     });
 
     // =========================================================

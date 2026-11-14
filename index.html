@@ -73,9 +73,6 @@
                     <label for="video-file-input" class="btn btn-primary btn-big">
                         <i class="fa-solid fa-folder-open"></i> Открыть видео
                     </label>
-                    <button id="btn-load-demo" class="btn btn-ghost">
-                        <i class="fa-solid fa-circle-play"></i> Смотреть демо (Big Buck Bunny)
-                    </button>
                     <div class="supported-formats">
                         <span>MP4</span><span>WebM</span><span>MOV</span><span>MKV</span><span>SRT / VTT</span>
                     </div>
@@ -92,6 +89,10 @@
                             <video id="video-element" preload="metadata" crossorigin="anonymous" playsinline></video>
 
                             <div id="loading-spinner" class="loading-spinner hidden"><div class="spinner"></div></div>
+                            <canvas id="quality-canvas" class="quality-canvas" aria-hidden="true"></canvas>
+                            <button id="btn-close-video" class="close-video-btn" type="button" title="Закрыть видео" aria-label="Закрыть видео">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
                             <div id="center-flash" class="center-flash"><i id="center-flash-icon" class="fa-solid fa-play"></i></div>
 
                             <div id="replay-overlay" class="replay-overlay hidden">
@@ -223,12 +224,6 @@
                                             <span class="slider-toggle"></span>
                                         </label>
                                     </div>
-                                    <div class="settings-divider"></div>
-                                    <div class="settings-item" data-action="add-quality-file" role="menuitem" tabindex="0">
-                                        <span class="setting-label"><i class="fa-solid fa-plus-circle"></i> Добавить файл другого качества</span>
-                                        <span class="setting-value"><i class="fa-solid fa-file-video"></i></span>
-                                    </div>
-                                    <input type="file" id="quality-file-input" accept="video/mp4,video/webm,video/ogg,video/quicktime,.mkv,.avi" hidden>
                                 </div>
                                 <div class="settings-view hidden" id="settings-speed">
                                     <div class="settings-submenu-header">
@@ -246,8 +241,9 @@
                                         </div>
                                         <div class="speed-scale" aria-hidden="true"><span>0.25x</span><span>1x</span><span>2x</span></div>
                                         <div class="speed-presets" id="speed-presets">
-                                            <button class="speed-pill" type="button" data-speed="0.25">0.25</button>
-                                            <button class="speed-pill speed-pill-normal active" type="button" data-speed="1">Нормальная</button>
+                                            <button class="speed-pill" type="button" data-speed="0.5">0.5</button>
+                                            <button class="speed-pill" type="button" data-speed="0.75">0.75</button>
+                                            <button class="speed-pill speed-pill-normal active" type="button" data-speed="1">1</button>
                                             <button class="speed-pill" type="button" data-speed="1.25">1.25</button>
                                             <button class="speed-pill" type="button" data-speed="1.5">1.5</button>
                                             <button class="speed-pill" type="button" data-speed="2">2</button>
@@ -258,6 +254,7 @@
                                     <div class="settings-submenu-header">
                                         <button class="back-btn" type="button" data-back="settings-main"><i class="fa-solid fa-arrow-left"></i> Качество видео</button>
                                     </div>
+                                    <div class="quality-note">Версии ниже оригинала сайт рисует на лету — картинка будет действительно хуже, переключение мгновенное.</div>
                                     <div class="settings-options" id="quality-options"></div>
                                 </div>
                                 <div class="settings-view hidden" id="settings-subtitles-menu">
