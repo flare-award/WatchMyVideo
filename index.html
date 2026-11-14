@@ -234,21 +234,23 @@
                                     <div class="settings-submenu-header">
                                         <button class="back-btn" type="button" data-back="settings-main"><i class="fa-solid fa-arrow-left"></i> Скорость воспроизведения</button>
                                     </div>
-                                    <div class="settings-options" id="speed-options">
-                                        <div class="settings-option" data-speed="0.25" tabindex="0">0.25x</div>
-                                        <div class="settings-option" data-speed="0.5" tabindex="0">0.5x</div>
-                                        <div class="settings-option" data-speed="0.75" tabindex="0">0.75x</div>
-                                        <div class="settings-option active" data-speed="1" tabindex="0">Нормальная (1x)</div>
-                                        <div class="settings-option" data-speed="1.25" tabindex="0">1.25x</div>
-                                        <div class="settings-option" data-speed="1.5" tabindex="0">1.5x</div>
-                                        <div class="settings-option" data-speed="1.75" tabindex="0">1.75x</div>
-                                        <div class="settings-option" data-speed="2" tabindex="0">2x</div>
-                                        <div class="settings-custom-speed">
-                                            <label for="custom-speed-input">Произвольная скорость (0.1–16):</label>
-                                            <div class="custom-speed-input-group">
-                                                <input type="number" id="custom-speed-input" min="0.1" max="16" step="0.05" value="1">
-                                                <button id="btn-apply-custom-speed" class="btn btn-sm btn-primary" type="button">ОК</button>
-                                            </div>
+                                    <div class="speed-slider-block">
+                                        <div class="speed-value-row">
+                                            <span class="speed-value-big" id="speed-slider-value">1x</span>
+                                            <span class="speed-value-hint" id="speed-value-hint">Нормальная скорость</span>
+                                        </div>
+                                        <div class="speed-slider-row">
+                                            <button class="speed-step-btn" id="speed-decrease" type="button" title="Медленнее" aria-label="Медленнее"><i class="fa-solid fa-minus"></i></button>
+                                            <input type="range" id="speed-slider" min="0.25" max="2" step="0.05" value="1" aria-label="Скорость воспроизведения">
+                                            <button class="speed-step-btn" id="speed-increase" type="button" title="Быстрее" aria-label="Быстрее"><i class="fa-solid fa-plus"></i></button>
+                                        </div>
+                                        <div class="speed-scale" aria-hidden="true"><span>0.25x</span><span>1x</span><span>2x</span></div>
+                                        <div class="speed-presets" id="speed-presets">
+                                            <button class="speed-pill" type="button" data-speed="0.25">0.25</button>
+                                            <button class="speed-pill speed-pill-normal active" type="button" data-speed="1">Нормальная</button>
+                                            <button class="speed-pill" type="button" data-speed="1.25">1.25</button>
+                                            <button class="speed-pill" type="button" data-speed="1.5">1.5</button>
+                                            <button class="speed-pill" type="button" data-speed="2">2</button>
                                         </div>
                                     </div>
                                 </div>

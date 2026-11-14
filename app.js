@@ -66,9 +66,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentSubLabel = $('current-sub-label');
     const pitchCheckbox = $('pitch-checkbox');
     const loopCheckbox = $('loop-checkbox');
-    const speedOptions = $('speed-options');
-    const customSpeedInput = $('custom-speed-input');
-    const btnApplyCustomSpeed = $('btn-apply-custom-speed');
+    const speedSlider = $('speed-slider');
+    const speedSliderValue = $('speed-slider-value');
+    const speedValueHint = $('speed-value-hint');
+    const speedDecrease = $('speed-decrease');
+    const speedIncrease = $('speed-increase');
+    const speedPresets = $('speed-presets');
     const qualityOptions = $('quality-options');
     const subtitlesOptionsList = $('subtitles-options-list');
 
@@ -1220,33 +1223,46 @@ document.addEventListener('DOMContentLoaded', () => {
         return speed === 1 ? 'Нормальная (1x)' : `${parseFloat(speed.toFixed(2))}x`;
     }
 
-    function setPlaybackSpeed(speed) {
-        playbackSpeed = speed;
-        video.playbackRate = speed;
-        setChevronValue(currentSpeedLabel, speedDisplayName(speed));
-        speedOptions.querySelectorAll('.settings-option').forEach((opt) => {
-            const optSpeed = parseFloat(opt.getAttribute('data-speed'));
-            opt.classList.toggle('active', Math.abs(optSpeed - speed) < 1e-9);
-        });
+    function clampSpeed(speed) {
+        return Math.min(2, Math.max(0.25, Math.round(speed * 100) / 100));
     }
 
-    speedOptions.addEventListener('click', (e) => {
-        const option = e.target.closest('.settings-option');
-        if (!option || !option.hasAttribute('data-speed')) return;
-        const speed = parseFloat(option.getAttribute('data-speed'));
-        if (isNaN(speed)) return;
-        setPlaybackSpeed(speed);
-        switchSettingsView(settingsMain);
+    function speedBigValue(speed) {
+        return `${parseFloat(speed.toFixed(2))}x`;
+    }
+
+    function paintSpeedSlider() {
+        const min = parseFloat(speedSlider.min);
+        const max = parseFloat(speedSlider.max);
+        const pct = ((playbackSpeed - min) / (max - min)) * 100;
+        speedSlider.style.setProperty('--fill', pct + '%');
+    }
+
+    function setPlaybackSpeed(speed) {
+        playbackSpeed = clampSpeed(speed);
+        video.playbackRate = playbackSpeed;
+        setChevronValue(currentSpeedLabel, speedDisplayName(playbackSpeed));
+        speedSlider.value = String(playbackSpeed);
+        speedSliderValue.textContent = speedBigValue(playbackSpeed);
+        speedValueHint.textContent = playbackSpeed === 1 ? 'Нормальная скорость' : (playbackSpeed < 1 ? 'Замедление' : 'Ускорение');
+        speedPresets.querySelectorAll('.speed-pill').forEach((pill) => {
+            pill.classList.toggle('active', Math.abs(parseFloat(pill.getAttribute('data-speed')) - playbackSpeed) < 1e-9);
+        });
+        paintSpeedSlider();
+    }
+
+    // The menu stays open while dragging — fine-tune like on YouTube.
+    speedSlider.addEventListener('input', () => {
+        setPlaybackSpeed(parseFloat(speedSlider.value));
     });
 
-    btnApplyCustomSpeed.addEventListener('click', () => {
-        const val = parseFloat(customSpeedInput.value);
-        if (!isNaN(val) && val >= 0.1 && val <= 16) {
-            setPlaybackSpeed(val);
-            switchSettingsView(settingsMain);
-        } else {
-            showToast('Скорость должна быть от 0.1 до 16');
-        }
+    speedDecrease.addEventListener('click', () => setPlaybackSpeed(playbackSpeed - 0.05));
+    speedIncrease.addEventListener('click', () => setPlaybackSpeed(playbackSpeed + 0.05));
+
+    speedPresets.addEventListener('click', (e) => {
+        const pill = e.target.closest('.speed-pill');
+        if (!pill) return;
+        setPlaybackSpeed(parseFloat(pill.getAttribute('data-speed')));
     });
 
     pitchCheckbox.addEventListener('change', (e) => {
@@ -1788,6 +1804,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateQualityUI();
     updateSubtitlesMenu();
     setVolume(1);
+    setPlaybackSpeed(1);
     renderSuggestions();
     refreshSocialUI();
     renderComments();

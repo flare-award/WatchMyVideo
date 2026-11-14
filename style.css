@@ -32,6 +32,45 @@ html, body {
     color: var(--text-color);
 }
 
+/* Custom scrollbar — thin, dark, low-contrast; matches the site. */
+html {
+    scrollbar-width: thin;                 /* Firefox */
+    scrollbar-color: #3d3d3d transparent;  /* Firefox */
+}
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+}
+
+::-webkit-scrollbar-thumb:active {
+    background: rgba(255, 255, 255, 0.4);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
 body {
     min-height: 100vh;
 }
@@ -588,6 +627,7 @@ body.mode-player {
 
 body.mode-player .app-container {
     height: 100vh;
+    height: 100dvh;
 }
 
 body.mode-player .main-content {
@@ -595,18 +635,34 @@ body.mode-player .main-content {
     inset: 0;
     background: #000;
     z-index: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
+/* Reset the YouTube grid so it does not add padding/max-width that would
+   offset an edge-to-edge player (that was pushing the frame to the right
+   and off-screen on zoom). */
 body.mode-player .app-shell,
 body.mode-player .yt-grid,
 body.mode-player .player-column {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
     height: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    gap: 0;
 }
 
 body.mode-player .player-wrapper {
-    width: 100vw;
-    height: 100vh;
+    flex: 1;
+    width: 100%;
+    height: 100%;
     border-radius: 0;
 }
 
@@ -723,10 +779,10 @@ body.mode-tiktok .player-wrapper {
     font-size: 2rem;
     line-height: 1;
     display: inline-flex;
-}
-
-.center-flash .fa-play {
-    padding-left: 6px;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
 }
 
 .center-flash.show {
@@ -970,6 +1026,11 @@ body.idle .player-wrapper {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    /* Fixed-size icon box: swapping fa-play/fa-pause (and other glyphs)
+       must never change the layout or nudge neighbouring icons. */
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
 }
 
 .control-btn:hover {
@@ -984,13 +1045,7 @@ body.idle .player-wrapper {
     background: rgba(255, 255, 255, 0.2);
 }
 
-#btn-play-pause .fa-play {
-    padding-left: 3px;
-}
 
-#btn-play-pause .fa-pause {
-    padding-left: 0;
-}
 
 .volume-container {
     display: flex;
@@ -1258,38 +1313,167 @@ input:checked + .slider-toggle:before {
     color: var(--text-secondary);
 }
 
-.settings-custom-speed {
-    padding: 10px 16px;
-    border-top: 1px solid rgba(255, 255, 255, 0.12);
-    margin-top: 4px;
+/* Speed submenu — YouTube-style slider (0.25x–2x, 0.05 steps) + preset pills */
+.speed-slider-block {
+    padding: 14px 16px 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.settings-custom-speed label {
-    font-size: 0.79rem;
-    color: var(--text-secondary);
-    display: block;
-    margin-bottom: 6px;
-}
-
-.custom-speed-input-group {
+.speed-value-row {
     display: flex;
-    gap: 8px;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
 }
 
-.custom-speed-input-group input {
+.speed-value-big {
+    font-size: 1.55rem;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    font-variant-numeric: tabular-nums;
+    color: #fff;
+}
+
+.speed-value-hint {
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+    text-align: right;
+}
+
+.speed-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.speed-step-btn {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 auto;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font-size: 0.72rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.speed-step-btn:hover {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+.speed-step-btn:active {
+    transform: scale(0.9);
+}
+
+#speed-slider {
+    -webkit-appearance: none;
+    appearance: none;
     flex: 1;
     min-width: 0;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 6px;
-    color: #fff;
-    padding: 6px 10px;
-    font-size: 0.9rem;
+    height: 4px;
+    border-radius: 999px;
+    background: linear-gradient(
+        to right,
+        #ffffff 0%,
+        #ffffff var(--fill, 42.9%),
+        rgba(255, 255, 255, 0.22) var(--fill, 42.9%),
+        rgba(255, 255, 255, 0.22) 100%
+    );
+    outline: none;
+    cursor: pointer;
+    transition: height 0.12s ease;
 }
 
-.custom-speed-input-group input:focus {
-    outline: none;
-    border-color: var(--accent-blue);
+#speed-slider:hover {
+    height: 6px;
+}
+
+#speed-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 15px;
+    height: 15px;
+    border: none;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+    transition: transform 0.15s ease;
+}
+
+#speed-slider:hover::-webkit-slider-thumb,
+#speed-slider:focus-visible::-webkit-slider-thumb {
+    transform: scale(1.35);
+}
+
+#speed-slider::-moz-range-thumb {
+    width: 15px;
+    height: 15px;
+    border: none;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+}
+
+#speed-slider::-moz-range-track {
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.22);
+}
+
+#speed-slider::-moz-range-progress {
+    height: 4px;
+    border-radius: 999px;
+    background: #ffffff;
+}
+
+#speed-slider:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 4px;
+}
+
+.speed-scale {
+    display: flex;
+    justify-content: space-between;
+    margin: 6px 38px 0;
+    font-size: 0.66rem;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.speed-presets {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+
+.speed-pill {
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #e1e1e1;
+    padding: 7px 13px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.speed-pill:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.speed-pill.active {
+    background: #ffffff;
+    border-color: #ffffff;
+    color: #0f0f0f;
+    font-weight: 700;
 }
 
 /* ============================================================
