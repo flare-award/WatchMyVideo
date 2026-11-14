@@ -3,259 +3,356 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WatchMyVideo — Локальный видеоплеер в стиле YouTube</title>
+    <title>WatchMyVideo — Локальный видеоплеер в стиле YouTube и TikTok</title>
+    <meta name="theme-color" content="#0f0f0f">
+    <meta name="description" content="WatchMyVideo — локальный видеоплеер в стиле YouTube и TikTok. Открывайте свои видеофайлы прямо в браузере: никакой загрузки на сервер.">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="style.css">
-    <!-- FontAwesome icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body class="dark-theme">
+<body class="mode-youtube">
     <div class="app-container">
-        <!-- Top Navigation Bar -->
-        <header class="app-header">
-            <div class="logo" title="WatchMyVideo">
-                <i class="fa-brands fa-youtube"></i>
-                <span>WatchMyVideo</span>
+
+        <!-- ══════════ YouTube-mode header (fixed, only in YouTube mode) ══════════ -->
+        <header class="app-header yt-only" id="yt-header">
+            <div class="header-left">
+                <div class="logo" title="WatchMyVideo — локальный видеоплеер">
+                    <img src="favicon.svg" class="logo-img" alt="WatchMyVideo" width="32" height="32">
+                    <span class="logo-text">WatchMyVideo</span>
+                </div>
             </div>
-            <div class="header-actions">
-                <label for="video-file-input" class="btn btn-primary" title="Выбрать видеофайл (MP4, WebM, MOV, MKV)">
-                    <i class="fa-solid fa-folder-open"></i><span class="btn-label">Открыть видео</span>
+            <div class="header-center">
+                <div class="search-box" role="search">
+                    <input id="search-input" type="text" placeholder="Поиск по вашим видео…" autocomplete="off" spellcheck="false" aria-label="Поиск по вашим видео">
+                    <button id="search-clear" class="search-clear hidden" type="button" title="Очистить" aria-label="Очистить поиск">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                    <button id="search-btn" class="search-btn" type="button" title="Найти" aria-label="Найти">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="header-right">
+                <label for="video-file-input" class="header-upload" title="Открыть видеофайл (MP4, WebM, MOV, MKV)">
+                    <i class="fa-solid fa-arrow-up-from-bracket"></i><span class="header-upload-text">Открыть</span>
                 </label>
-                <input type="file" id="video-file-input" accept="video/mp4,video/webm,video/ogg,video/quicktime,.mkv,.avi" hidden>
-
-                <label for="sub-file-input" class="btn btn-secondary" title="Загрузить субтитры (.srt, .vtt)">
-                    <i class="fa-solid fa-closed-captioning"></i><span class="btn-label">Субтитры</span>
-                </label>
-                <input type="file" id="sub-file-input" accept=".srt,.vtt" hidden>
-
-                <button id="btn-toggle-style" class="btn btn-secondary" title="Переключить стиль плеера (YouTube / TikTok)">
-                    <i class="fa-brands fa-youtube" id="style-toggle-icon"></i><span class="btn-label" id="style-name">YouTube стиль</span>
-                </button>
+                <div class="mode-pill" role="tablist" aria-label="Режим отображения">
+                    <button type="button" class="mode-pill-btn" data-mode="player" role="tab" title="Режим «Плеер» — только сам плеер"><i class="fa-solid fa-film"></i><span>Плеер</span></button>
+                    <button type="button" class="mode-pill-btn active" data-mode="youtube" role="tab" aria-selected="true" title="Режим «YouTube» — страница как на YouTube"><i class="fa-brands fa-youtube"></i><span>YouTube</span></button>
+                    <button type="button" class="mode-pill-btn" data-mode="tiktok" role="tab" title="Режим «TikTok» — страница как в TikTok"><i class="fa-brands fa-tiktok"></i><span>TikTok</span></button>
+                </div>
             </div>
         </header>
 
-        <!-- Main Content Area -->
-        <main class="main-content">
-            <!-- Welcome / Upload Dropzone (shown when no video is loaded) -->
-            <div id="welcome-screen" class="welcome-screen">
-                <div class="dropzone" id="dropzone">
-                    <i class="fa-solid fa-cloud-arrow-up drop-icon"></i>
-                    <h2>Перетащите видеофайл сюда</h2>
-                    <p>или нажмите кнопку «Открыть видео» вверху страницы</p>
-                    <div class="supported-formats">
-                        <span>MP4</span> <span>WebM</span> <span>MOV</span> <span>MKV</span> <span>SRT / VTT субтитры</span>
-                    </div>
-                    <button id="btn-load-demo" class="btn btn-accent" style="margin-top: 8px;">
-                        <i class="fa-solid fa-play"></i> Загрузить демо-видео
-                    </button>
-                </div>
+        <!-- ══════════ Ambient floating bar (player/tiktok modes, auto-hides) ══════════ -->
+        <div class="ambient-bar ambient-only" id="ambient-bar">
+            <div class="ambient-logo" title="WatchMyVideo">
+                <img src="favicon.svg" class="ambient-logo-img" alt="WatchMyVideo" width="28" height="28">
+                <span class="ambient-logo-text">WatchMyVideo</span>
             </div>
+            <label for="video-file-input" class="ambient-open" title="Открыть видеофайл">
+                <i class="fa-solid fa-folder-open"></i><span>Открыть видео</span>
+            </label>
+            <div class="mode-pill mode-pill-ambient" role="tablist" aria-label="Режим отображения">
+                <button type="button" class="mode-pill-btn" data-mode="player" role="tab" title="Режим «Плеер» — только сам плеер"><i class="fa-solid fa-film"></i><span>Плеер</span></button>
+                <button type="button" class="mode-pill-btn" data-mode="youtube" role="tab" title="Режим «YouTube»"><i class="fa-brands fa-youtube"></i><span>YouTube</span></button>
+                <button type="button" class="mode-pill-btn" data-mode="tiktok" role="tab" title="Режим «TikTok»"><i class="fa-brands fa-tiktok"></i><span>TikTok</span></button>
+            </div>
+        </div>
 
-            <!-- Player Container (Single Wrapper) -->
-            <div id="player-wrapper" class="player-wrapper youtube-style hidden">
-                <!-- Video Element (NO controls attribute; custom overlay below).
-                     crossorigin="anonymous" lets the Web Audio API (volume boost) tap demo audio. -->
-                <video id="video-element" preload="metadata" crossorigin="anonymous" playsinline></video>
+        <main class="main-content" id="main-content">
+            <input type="file" id="video-file-input" accept="video/mp4,video/webm,video/ogg,video/quicktime,.mkv,.avi" hidden>
+            <input type="file" id="sub-file-input" accept=".srt,.vtt" hidden>
 
-                <!-- Loading Spinner -->
-                <div id="loading-spinner" class="loading-spinner hidden">
-                    <div class="spinner"></div>
-                </div>
-
-                <!-- Center flash icon on play / pause -->
-                <div id="center-flash" class="center-flash">
-                    <i id="center-flash-icon" class="fa-solid fa-play"></i>
-                </div>
-
-                <!-- Replay overlay (shown when the video ends) -->
-                <div id="replay-overlay" class="replay-overlay hidden">
-                    <button id="btn-replay" class="replay-button" title="Смотреть снова">
-                        <i class="fa-solid fa-rotate-right"></i>
-                        <span>Смотреть снова</span>
+            <!-- ══════════ Welcome / dropzone (shown before any video is loaded) ══════════ -->
+            <section id="welcome-screen" class="welcome-screen">
+                <div class="dropzone" id="dropzone">
+                    <img src="favicon.svg" class="drop-logo" alt="" width="88" height="88">
+                    <h1>Смотрите свои видео в браузере</h1>
+                    <p>Перетащите видеофайл сюда или выберите его на диске — всё работает локально, без загрузки на сервер</p>
+                    <label for="video-file-input" class="btn btn-primary btn-big">
+                        <i class="fa-solid fa-folder-open"></i> Открыть видео
+                    </label>
+                    <button id="btn-load-demo" class="btn btn-ghost">
+                        <i class="fa-solid fa-circle-play"></i> Смотреть демо (Big Buck Bunny)
                     </button>
-                </div>
-
-                <!-- Double Tap / Keypress Indicator Animation (visibility controlled by .show) -->
-                <div id="double-tap-indicator" class="double-tap-indicator">
-                    <div class="tap-animation" id="tap-animation-content">
-                        <i class="fa-solid fa-angles-left"></i>
-                        <span>-5 сек</span>
+                    <div class="supported-formats">
+                        <span>MP4</span><span>WebM</span><span>MOV</span><span>MKV</span><span>SRT / VTT</span>
                     </div>
                 </div>
+            </section>
 
-                <!-- Subtitle Overlay -->
-                <div id="subtitle-overlay" class="subtitle-overlay"></div>
+            <!-- ══════════ App shell (after a video is loaded) ══════════ -->
+            <div id="app-shell" class="app-shell hidden">
+                <div class="yt-grid" id="yt-grid">
+                    <div class="player-column">
 
-                <!-- TikTok Mode Action Rail (Visible only in TikTok style) -->
-                <div id="tiktok-sidebar" class="tiktok-sidebar hidden">
-                    <button class="tiktok-action-btn" id="tk-like" title="Нравится" aria-pressed="false">
-                        <i class="fa-solid fa-heart"></i>
-                        <span class="count" id="tk-like-count">0</span>
-                    </button>
-                    <button class="tiktok-action-btn" id="tk-share" title="Поделиться">
-                        <i class="fa-solid fa-share"></i>
-                        <span class="count">Поделиться</span>
-                    </button>
-                    <div class="tiktok-sound-disk" title="Аудиодорожка">
-                        <i class="fa-solid fa-music" id="tk-sound-icon"></i>
-                    </div>
-                </div>
+                        <!-- ══════════ The player (same node in all modes) ══════════ -->
+                        <div id="player-wrapper" class="player-wrapper">
+                            <video id="video-element" preload="metadata" crossorigin="anonymous" playsinline></video>
 
-                <!-- Custom Controls Overlay -->
-                <div id="custom-controls-overlay" class="custom-controls-overlay">
-                    <!-- Progress Bar Container -->
-                    <div class="progress-container" id="progress-container" role="slider" aria-label="Позиция воспроизведения" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
-                        <div class="progress-tooltip" id="progress-tooltip">0:00</div>
-                        <div class="progress-buffered" id="progress-buffered"></div>
-                        <div class="progress-played" id="progress-played"></div>
-                        <div class="progress-scrubber" id="progress-scrubber"></div>
-                    </div>
+                            <div id="loading-spinner" class="loading-spinner hidden"><div class="spinner"></div></div>
+                            <div id="center-flash" class="center-flash"><i id="center-flash-icon" class="fa-solid fa-play"></i></div>
 
-                    <!-- Bottom Controls Row -->
-                    <div class="controls-row">
-                        <!-- Left Controls Group -->
-                        <div class="controls-left">
-                            <button id="btn-play-pause" class="control-btn" title="Воспроизвести (K)">
-                                <i class="fa-solid fa-play" id="play-pause-icon"></i>
-                            </button>
-
-                            <button id="btn-prev-frame" class="control-btn" title="Предыдущий кадр (,) [на паузе]">
-                                <i class="fa-solid fa-backward-step"></i>
-                            </button>
-                            <button id="btn-next-frame" class="control-btn" title="Следующий кадр (.) [на паузе]">
-                                <i class="fa-solid fa-forward-step"></i>
-                            </button>
-
-                            <div class="volume-container">
-                                <button id="btn-mute" class="control-btn" title="Выключить звук (M)">
-                                    <i class="fa-solid fa-volume-high" id="volume-icon"></i>
+                            <div id="replay-overlay" class="replay-overlay hidden">
+                                <button id="btn-replay" class="replay-button" type="button">
+                                    <i class="fa-solid fa-rotate-right"></i><span>Смотреть снова</span>
                                 </button>
-                                <input type="range" id="volume-slider" min="0" max="100" value="100" step="1" title="Громкость" aria-label="Громкость">
                             </div>
 
-                            <button id="btn-volume-boost" class="control-btn boost-btn" title="Усиление звука до 200%">
-                                <span class="boost-text">BOOST</span>
-                            </button>
-
-                            <div class="time-display">
-                                <span id="current-time">0:00</span><span class="time-separator"> / </span><span id="duration">0:00</span>
+                            <div id="double-tap-indicator" class="double-tap-indicator">
+                                <div class="tap-animation" id="tap-animation-content"></div>
                             </div>
-                        </div>
 
-                        <!-- Right Controls Group -->
-                        <div class="controls-right">
-                            <button id="btn-subtitles" class="control-btn" title="Субтитры (C)">
-                                <i class="fa-solid fa-closed-captioning"></i>
-                                <span class="cc-indicator" id="cc-indicator"></span>
-                            </button>
+                            <div id="subtitle-overlay" class="subtitle-overlay"></div>
+                                    <div class="tk-rail" id="tk-rail">
+                                        <div class="tk-avatar-wrap">
+                                            <div class="tk-avatar" id="tk-avatar">B</div>
+                                            <button class="tk-follow" id="tk-follow" type="button" title="Подписаться на автора" aria-pressed="false">
+                                                <i class="fa-solid fa-plus" id="tk-follow-icon"></i>
+                                            </button>
+                                        </div>
+                                        <button class="tk-action" id="tk-like" type="button" title="Нравится" aria-pressed="false">
+                                            <i class="fa-solid fa-heart"></i>
+                                            <span class="tk-count" id="tk-like-count">0</span>
+                                        </button>
+                                        <button class="tk-action" id="tk-comments" type="button" title="Комментарии">
+                                            <i class="fa-solid fa-comment-dots"></i>
+                                            <span class="tk-count" id="tk-comment-count">0</span>
+                                        </button>
+                                        <button class="tk-action" id="tk-save" type="button" title="В избранное" aria-pressed="false">
+                                            <i class="fa-solid fa-bookmark" id="tk-save-icon"></i>
+                                            <span class="tk-count" id="tk-save-label">В избранное</span>
+                                        </button>
+                                        <button class="tk-action" id="tk-share" type="button" title="Поделиться">
+                                            <i class="fa-solid fa-share"></i>
+                                            <span class="tk-count">Поделиться</span>
+                                        </button>
+                                    </div>
 
-                            <button id="btn-settings" class="control-btn" title="Настройки">
-                                <i class="fa-solid fa-gear"></i>
-                            </button>
+                                    <div class="tk-info">
+                                        <div class="tk-author" id="tk-author">@author</div>
+                                        <div class="tk-desc" id="tk-desc">Описание видео</div>
+                                        <div class="tk-music">
+                                            <i class="fa-solid fa-music"></i>
+                                            <div class="tk-music-marquee"><span id="tk-music-text">оригинальный звук</span></div>
+                                        </div>
+                                    </div>
 
-                            <button id="btn-pip" class="control-btn" title="Картинка в картинке (P)">
-                                <i class="fa-solid fa-clone"></i>
-                            </button>
+                            <!-- Custom controls -->
+                            <div id="custom-controls-overlay" class="custom-controls-overlay">
+                                <div class="progress-container" id="progress-container" role="slider" aria-label="Позиция воспроизведения" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
+                                    <div class="progress-tooltip" id="progress-tooltip">0:00</div>
+                                    <div class="progress-buffered" id="progress-buffered"></div>
+                                    <div class="progress-played" id="progress-played"></div>
+                                    <div class="progress-scrubber" id="progress-scrubber"></div>
+                                </div>
 
-                            <button id="btn-theater" class="control-btn" title="Режим кинотеатра (T)" aria-pressed="false">
-                                <i class="fa-solid fa-rectangle-ad" id="theater-icon"></i>
-                            </button>
-
-                            <button id="btn-fullscreen" class="control-btn" title="На весь экран (F)">
-                                <i class="fa-solid fa-expand" id="fullscreen-icon"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Settings Popup Menu (YouTube-style) -->
-                <div id="settings-menu" class="settings-menu hidden" role="menu">
-                    <!-- Main Settings View -->
-                    <div class="settings-view active" id="settings-main">
-                        <div class="settings-item" data-action="speed" role="menuitem">
-                            <span class="setting-label"><i class="fa-solid fa-gauge-high"></i> Скорость</span>
-                            <span class="setting-value" id="current-speed-label">Нормальная (1x) <i class="fa-solid fa-chevron-right"></i></span>
-                        </div>
-                        <div class="settings-item" data-action="quality" role="menuitem">
-                            <span class="setting-label"><i class="fa-solid fa-sliders"></i> Качество</span>
-                            <span class="setting-value" id="current-quality-label">Исходное <i class="fa-solid fa-chevron-right"></i></span>
-                        </div>
-                        <div class="settings-item" data-action="subtitles-menu" role="menuitem">
-                            <span class="setting-label"><i class="fa-solid fa-closed-captioning"></i> Субтитры</span>
-                            <span class="setting-value" id="current-sub-label">Выключены <i class="fa-solid fa-chevron-right"></i></span>
-                        </div>
-                        <div class="settings-divider"></div>
-                        <div class="settings-item toggle-item">
-                            <span class="setting-label"><i class="fa-solid fa-music"></i> Сохранять высоту тона</span>
-                            <label class="switch" title="Не менять тональность голоса при изменении скорости">
-                                <input type="checkbox" id="pitch-checkbox" checked>
-                                <span class="slider-toggle"></span>
-                            </label>
-                        </div>
-                        <div class="settings-item toggle-item">
-                            <span class="setting-label"><i class="fa-solid fa-rotate"></i> Зациклить видео</span>
-                            <label class="switch" title="Повторять видео после окончания">
-                                <input type="checkbox" id="loop-checkbox">
-                                <span class="slider-toggle"></span>
-                            </label>
-                        </div>
-                        <div class="settings-divider"></div>
-                        <div class="settings-item" data-action="add-quality-file" role="menuitem">
-                            <span class="setting-label"><i class="fa-solid fa-plus-circle"></i> Добавить файл другого качества</span>
-                            <span class="setting-value"><i class="fa-solid fa-file-video"></i></span>
-                        </div>
-                        <input type="file" id="quality-file-input" accept="video/mp4,video/webm,video/ogg,video/quicktime,.mkv,.avi" hidden>
-                    </div>
-
-                    <!-- Speed Submenu -->
-                    <div class="settings-view hidden" id="settings-speed">
-                        <div class="settings-submenu-header">
-                            <button class="back-btn" data-back="settings-main"><i class="fa-solid fa-arrow-left"></i> Скорость воспроизведения</button>
-                        </div>
-                        <div class="settings-options" id="speed-options">
-                            <div class="settings-option" data-speed="0.25">0.25x</div>
-                            <div class="settings-option" data-speed="0.5">0.5x</div>
-                            <div class="settings-option" data-speed="0.75">0.75x</div>
-                            <div class="settings-option active" data-speed="1">Нормальная (1x)</div>
-                            <div class="settings-option" data-speed="1.25">1.25x</div>
-                            <div class="settings-option" data-speed="1.5">1.5x</div>
-                            <div class="settings-option" data-speed="1.75">1.75x</div>
-                            <div class="settings-option" data-speed="2">2x</div>
-                            <div class="settings-custom-speed">
-                                <label for="custom-speed-input">Произвольная скорость (0.1–16):</label>
-                                <div class="custom-speed-input-group">
-                                    <input type="number" id="custom-speed-input" min="0.1" max="16" step="0.05" value="1">
-                                    <button id="btn-apply-custom-speed" class="btn btn-sm btn-primary">ОК</button>
+                                <div class="controls-row">
+                                    <div class="controls-left">
+                                        <button id="btn-play-pause" class="control-btn" type="button" title="Воспроизвести (K)">
+                                            <i class="fa-solid fa-play" id="play-pause-icon"></i>
+                                        </button>
+                                        <button id="btn-prev-frame" class="control-btn" type="button" title="Предыдущий кадр (, или Б) [на паузе]">
+                                            <i class="fa-solid fa-backward-step"></i>
+                                        </button>
+                                        <button id="btn-next-frame" class="control-btn" type="button" title="Следующий кадр (. или Ю) [на паузе]">
+                                            <i class="fa-solid fa-forward-step"></i>
+                                        </button>
+                                        <div class="volume-container">
+                                            <button id="btn-mute" class="control-btn" type="button" title="Выключить звук (M)">
+                                                <i class="fa-solid fa-volume-high" id="volume-icon"></i>
+                                            </button>
+                                            <input type="range" id="volume-slider" min="0" max="100" value="100" step="1" title="Громкость" aria-label="Громкость">
+                                        </div>
+                                        <button id="btn-volume-boost" class="control-btn boost-btn" type="button" title="Усиление звука до 200%">
+                                            <span class="boost-text">BOOST</span>
+                                        </button>
+                                        <div class="time-display">
+                                            <span id="current-time">0:00</span><span class="time-separator"> / </span><span id="duration">0:00</span>
+                                        </div>
+                                    </div>
+                                    <div class="controls-right">
+                                        <button id="btn-subtitles" class="control-btn" type="button" title="Субтитры (C)">
+                                            <i class="fa-solid fa-closed-captioning"></i>
+                                            <span class="cc-indicator" id="cc-indicator"></span>
+                                        </button>
+                                        <button id="btn-settings" class="control-btn" type="button" title="Настройки">
+                                            <i class="fa-solid fa-gear" id="settings-gear-icon"></i>
+                                        </button>
+                                        <button id="btn-pip" class="control-btn" type="button" title="Картинка в картинке (P)">
+                                            <i class="fa-solid fa-clone"></i>
+                                        </button>
+                                        <button id="btn-theater" class="control-btn youtube-only" type="button" title="Режим кинотеатра (T)" aria-pressed="false">
+                                            <i class="fa-solid fa-film-simple" id="theater-icon"></i>
+                                        </button>
+                                        <button id="btn-fullscreen" class="control-btn" type="button" title="На весь экран (F)">
+                                            <i class="fa-solid fa-expand" id="fullscreen-icon"></i>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
 
-                    <!-- Quality Submenu -->
-                    <div class="settings-view hidden" id="settings-quality">
-                        <div class="settings-submenu-header">
-                            <button class="back-btn" data-back="settings-main"><i class="fa-solid fa-arrow-left"></i> Качество видео</button>
-                        </div>
-                        <div class="settings-options" id="quality-options">
-                            <!-- Options are generated from actually loaded files -->
-                        </div>
-                    </div>
+                            <!-- Settings menu (YouTube-style) -->
+                            <div id="settings-menu" class="settings-menu hidden" role="menu">
+                                <div class="settings-view active" id="settings-main">
+                                    <div class="settings-item" data-action="speed" role="menuitem" tabindex="0">
+                                        <span class="setting-label"><i class="fa-solid fa-gauge-high"></i> Скорость</span>
+                                        <span class="setting-value" id="current-speed-label">Нормальная (1x) <i class="fa-solid fa-chevron-right"></i></span>
+                                    </div>
+                                    <div class="settings-item" data-action="quality" role="menuitem" tabindex="0">
+                                        <span class="setting-label"><i class="fa-solid fa-sliders"></i> Качество</span>
+                                        <span class="setting-value" id="current-quality-label">Исходное <i class="fa-solid fa-chevron-right"></i></span>
+                                    </div>
+                                    <div class="settings-item" data-action="subtitles-menu" role="menuitem" tabindex="0">
+                                        <span class="setting-label"><i class="fa-solid fa-closed-captioning"></i> Субтитры</span>
+                                        <span class="setting-value" id="current-sub-label">Выключены <i class="fa-solid fa-chevron-right"></i></span>
+                                    </div>
+                                    <div class="settings-divider"></div>
+                                    <div class="settings-item toggle-item">
+                                        <span class="setting-label"><i class="fa-solid fa-music"></i> Сохранять высоту тона</span>
+                                        <label class="switch" title="Не менять тональность голоса при изменении скорости">
+                                            <input type="checkbox" id="pitch-checkbox" checked>
+                                            <span class="slider-toggle"></span>
+                                        </label>
+                                    </div>
+                                    <div class="settings-item toggle-item">
+                                        <span class="setting-label"><i class="fa-solid fa-rotate"></i> Зациклить видео</span>
+                                        <label class="switch" title="Повторять видео после окончания">
+                                            <input type="checkbox" id="loop-checkbox">
+                                            <span class="slider-toggle"></span>
+                                        </label>
+                                    </div>
+                                    <div class="settings-divider"></div>
+                                    <div class="settings-item" data-action="add-quality-file" role="menuitem" tabindex="0">
+                                        <span class="setting-label"><i class="fa-solid fa-plus-circle"></i> Добавить файл другого качества</span>
+                                        <span class="setting-value"><i class="fa-solid fa-file-video"></i></span>
+                                    </div>
+                                    <input type="file" id="quality-file-input" accept="video/mp4,video/webm,video/ogg,video/quicktime,.mkv,.avi" hidden>
+                                </div>
+                                <div class="settings-view hidden" id="settings-speed">
+                                    <div class="settings-submenu-header">
+                                        <button class="back-btn" type="button" data-back="settings-main"><i class="fa-solid fa-arrow-left"></i> Скорость воспроизведения</button>
+                                    </div>
+                                    <div class="settings-options" id="speed-options">
+                                        <div class="settings-option" data-speed="0.25" tabindex="0">0.25x</div>
+                                        <div class="settings-option" data-speed="0.5" tabindex="0">0.5x</div>
+                                        <div class="settings-option" data-speed="0.75" tabindex="0">0.75x</div>
+                                        <div class="settings-option active" data-speed="1" tabindex="0">Нормальная (1x)</div>
+                                        <div class="settings-option" data-speed="1.25" tabindex="0">1.25x</div>
+                                        <div class="settings-option" data-speed="1.5" tabindex="0">1.5x</div>
+                                        <div class="settings-option" data-speed="1.75" tabindex="0">1.75x</div>
+                                        <div class="settings-option" data-speed="2" tabindex="0">2x</div>
+                                        <div class="settings-custom-speed">
+                                            <label for="custom-speed-input">Произвольная скорость (0.1–16):</label>
+                                            <div class="custom-speed-input-group">
+                                                <input type="number" id="custom-speed-input" min="0.1" max="16" step="0.05" value="1">
+                                                <button id="btn-apply-custom-speed" class="btn btn-sm btn-primary" type="button">ОК</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-view hidden" id="settings-quality">
+                                    <div class="settings-submenu-header">
+                                        <button class="back-btn" type="button" data-back="settings-main"><i class="fa-solid fa-arrow-left"></i> Качество видео</button>
+                                    </div>
+                                    <div class="settings-options" id="quality-options"></div>
+                                </div>
+                                <div class="settings-view hidden" id="settings-subtitles-menu">
+                                    <div class="settings-submenu-header">
+                                        <button class="back-btn" type="button" data-back="settings-main"><i class="fa-solid fa-arrow-left"></i> Выбор субтитров</button>
+                                    </div>
+                                    <div class="settings-options" id="subtitles-options-list"></div>
+                                </div>
+                            </div>
+                        </div><!-- /player-wrapper -->
 
-                    <!-- Subtitles Submenu -->
-                    <div class="settings-view hidden" id="settings-subtitles-menu">
-                        <div class="settings-submenu-header">
-                            <button class="back-btn" data-back="settings-main"><i class="fa-solid fa-arrow-left"></i> Выбор субтитров</button>
-                        </div>
-                        <div class="settings-options" id="subtitles-options-list">
-                            <div class="settings-option active" data-sub="off">Выключены</div>
-                            <!-- Dynamic subtitle tracks will be inserted here -->
-                        </div>
-                    </div>
-                </div>
-            </div>
+                        <!-- ══════════ YouTube info section (YouTube mode only) ══════════ -->
+                        <section id="yt-info" class="yt-info yt-only">
+                            <h1 class="yt-title" id="yt-title">Видео</h1>
+                            <div class="yt-action-row">
+                                <div class="yt-channel">
+                                    <div class="yt-avatar" id="yt-avatar">W</div>
+                                    <div class="yt-channel-meta">
+                                        <div class="yt-channel-name">WatchMyVideo</div>
+                                        <div class="yt-channel-sub">Локальные видео · <span id="yt-channel-count">0</span> видео</div>
+                                    </div>
+                                    <button id="btn-subscribe" class="yt-sub-btn" type="button" aria-pressed="false">Подписаться</button>
+                                </div>
+                                <div class="yt-actions">
+                                    <div class="yt-like-group" role="group" aria-label="Оценить видео">
+                                        <button id="btn-like" class="yt-action yt-action-grouped" type="button" aria-pressed="false" title="Мне нравится">
+                                            <i class="fa-solid fa-thumbs-up"></i><span id="like-count">0</span>
+                                        </button>
+                                        <button id="btn-dislike" class="yt-action yt-action-grouped yt-action-divider" type="button" aria-pressed="false" title="Мне не нравится">
+                                            <i class="fa-solid fa-thumbs-down"></i>
+                                        </button>
+                                    </div>
+                                    <button id="btn-share-yt" class="yt-action" type="button" title="Поделиться">
+                                        <i class="fa-solid fa-share"></i><span>Поделиться</span>
+                                    </button>
+                                    <button id="btn-download" class="yt-action" type="button" title="Скачать файл">
+                                        <i class="fa-solid fa-download"></i><span>Скачать</span>
+                                    </button>
+                                    <button id="btn-save" class="yt-action" type="button" aria-pressed="false" title="Сохранить к себе">
+                                        <i class="fa-regular fa-bookmark" id="save-icon"></i><span id="save-label">Сохранить</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <button class="yt-description" id="yt-description" type="button" aria-expanded="false">
+                                <span class="yt-description-text" id="yt-description-text"></span>
+                                <span class="yt-description-more" id="yt-description-more">Ещё</span>
+                            </button>
+                            <section class="yt-comments">
+                                <h2 class="yt-comments-title">Комментарии <span id="yt-comment-count">0</span></h2>
+                                <form class="yt-comment-form" id="yt-comment-form">
+                                    <div class="yt-avatar yt-avatar-me">Я</div>
+                                    <input id="yt-comment-input" type="text" placeholder="Оставьте комментарий…" autocomplete="off" maxlength="500" aria-label="Оставьте комментарий">
+                                    <button type="submit" class="yt-comment-send" title="Отправить" aria-label="Отправить комментарий">
+                                        <i class="fa-solid fa-paper-plane"></i>
+                                    </button>
+                                </form>
+                                <div class="yt-comment-list" id="yt-comment-list"></div>
+                            </section>
+                        </section>
+                    </div><!-- /player-column -->
+
+                    <!-- ══════════ YouTube sidebar (YouTube mode only) ══════════ -->
+                    <aside id="yt-sidebar" class="yt-sidebar yt-only" aria-label="Рекомендации">
+                        <h2 class="yt-sidebar-title">Похожие видео</h2>
+                        <div id="suggest-list" class="suggest-list"></div>
+                    </aside>
+                </div><!-- /yt-grid -->
+            </div><!-- /app-shell -->
         </main>
+    </div><!-- /app-container -->
+
+    <!-- ══════════ TikTok chrome (TikTok mode only, floats over everything) ══════════ -->
+    <div id="tk-chrome" class="tk-chrome tk-only" aria-hidden="true">
+        <div class="tk-backdrop" id="tk-backdrop"></div>
+        <div class="tk-drawer" id="tk-drawer" role="dialog" aria-modal="true" aria-label="Комментарии">
+            <div class="tk-drawer-handle"></div>
+            <div class="tk-drawer-header">
+                <span class="tk-drawer-title">Комментарии <b id="tk-drawer-count">0</b></span>
+                <button id="tk-drawer-close" class="tk-drawer-close" type="button" title="Закрыть" aria-label="Закрыть комментарии">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+            <div class="tk-drawer-list" id="tk-comment-list"></div>
+            <form class="tk-drawer-form" id="tk-comment-form">
+                <div class="yt-avatar yt-avatar-me tk-drawer-avatar">Я</div>
+                <input id="tk-comment-input" type="text" placeholder="Добавьте комментарий…" autocomplete="off" maxlength="500" aria-label="Добавьте комментарий">
+                <button type="submit" class="tk-drawer-send" title="Отправить" aria-label="Отправить комментарий">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </form>
+        </div>
     </div>
 
-    <!-- Toast notification -->
+    <!-- Hidden thumbnail capture pipeline -->
+    <video id="thumb-video" class="hidden-video" muted playsinline preload="metadata" crossorigin="anonymous"></video>
+
+    <!-- Toast -->
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script src="app.js"></script>
