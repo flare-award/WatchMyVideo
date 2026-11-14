@@ -16,7 +16,8 @@
     --accent-hover: #cc0000;
     --slider-bg: rgba(255, 255, 255, 0.2);
     --slider-played: #ff0000;
-    --overlay-gradient: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.5) 50%, transparent 100%);
+    --overlay-gradient: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.45) 55%, transparent 100%);
+    --header-height: 60px;
 }
 
 body.dark-theme {
@@ -25,14 +26,25 @@ body.dark-theme {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
-    overflow-x: hidden;
+    overflow: hidden;
 }
 
 .hidden {
     display: none !important;
 }
 
-/* App Layout */
+/* Accessible focus outline */
+button:focus-visible,
+label:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+    outline: 2px solid #3ea6ff;
+    outline-offset: 2px;
+}
+
+/* ==========================================
+   APP LAYOUT
+   ========================================== */
 .app-container {
     display: flex;
     flex-direction: column;
@@ -44,11 +56,13 @@ body.dark-theme {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 24px;
+    gap: 16px;
+    padding: 0 24px;
     background-color: var(--surface-color);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     z-index: 100;
-    height: 60px;
+    height: var(--header-height);
+    flex-shrink: 0;
 }
 
 .logo {
@@ -58,10 +72,16 @@ body.dark-theme {
     font-size: 1.25rem;
     font-weight: 700;
     letter-spacing: -0.5px;
+    line-height: 1;
+    white-space: nowrap;
 }
 
 .logo i {
-    font-size: 1.5rem;
+    font-size: 1.6rem;
+    color: var(--accent-color);
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
 }
 
 .header-actions {
@@ -70,10 +90,13 @@ body.dark-theme {
     gap: 12px;
 }
 
-/* Buttons */
+/* ==========================================
+   BUTTONS
+   ========================================== */
 .btn {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 8px;
     padding: 8px 16px;
     border-radius: 20px;
@@ -81,7 +104,16 @@ body.dark-theme {
     cursor: pointer;
     font-size: 0.9rem;
     font-weight: 500;
+    line-height: 1;
     transition: background 0.2s, transform 0.1s;
+    color: #fff;
+    white-space: nowrap;
+}
+
+.btn i {
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
 }
 
 .btn:active {
@@ -116,29 +148,15 @@ body.dark-theme {
     background-color: #65b8ff;
 }
 
-.btn-icon {
-    background: transparent;
-    color: white;
-    font-size: 1.1rem;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.btn-icon:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
 .btn-sm {
-    padding: 4px 10px;
+    padding: 6px 12px;
     font-size: 0.8rem;
-    border-radius: 4px;
+    border-radius: 6px;
 }
 
-/* Main Content & Welcome Screen */
+/* ==========================================
+   MAIN CONTENT & WELCOME SCREEN
+   ========================================== */
 .main-content {
     flex: 1;
     display: flex;
@@ -147,6 +165,7 @@ body.dark-theme {
     position: relative;
     background-color: #000;
     overflow: hidden;
+    min-height: 0;
 }
 
 .welcome-screen {
@@ -156,12 +175,13 @@ body.dark-theme {
     width: 100%;
     height: 100%;
     padding: 20px;
+    background-color: var(--bg-color);
 }
 
 .dropzone {
     border: 3px dashed rgba(255, 255, 255, 0.2);
     border-radius: 16px;
-    padding: 60px 40px;
+    padding: 48px 40px;
     text-align: center;
     max-width: 600px;
     width: 100%;
@@ -170,18 +190,18 @@ body.dark-theme {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 16px;
+    gap: 14px;
 }
 
 .dropzone.dragover {
     border-color: var(--accent-color);
-    background-color: rgba(255, 0, 0, 0.05);
+    background-color: rgba(255, 0, 0, 0.06);
 }
 
 .drop-icon {
     font-size: 4rem;
     color: var(--text-secondary);
-    margin-bottom: 10px;
+    line-height: 1;
 }
 
 .dropzone h2 {
@@ -197,36 +217,70 @@ body.dark-theme {
 .supported-formats {
     display: flex;
     gap: 8px;
-    margin-top: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 4px;
 }
 
 .supported-formats span {
     background: rgba(255, 255, 255, 0.1);
-    padding: 4px 8px;
+    padding: 4px 10px;
     border-radius: 4px;
     font-size: 0.75rem;
     color: var(--text-secondary);
 }
 
 /* ==========================================
-   PLAYER WRAPPER & CUSTOM CONTROLS OVERLAY
+   PLAYER WRAPPER & VIEW MODES
    ========================================== */
 .player-wrapper {
     position: relative;
-    width: 100%;
-    height: 100%;
+    /* Normal mode (default & .youtube-style): centered 16:9 box, like YouTube */
+    aspect-ratio: 16 / 9;
+    width: min(1280px, 100%, calc((100vh - var(--header-height)) * 16 / 9));
+    max-height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
     background-color: #000;
     overflow: hidden;
     user-select: none;
+    border-radius: 12px;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
 }
 
+/* Theater mode: edge-to-edge, uses all available width (like YouTube theater) */
 .player-wrapper.theater-mode {
-    max-width: 100% !important;
-    max-height: 85vh !important;
-    height: 85vh !important;
+    aspect-ratio: auto;
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+/* TikTok mode: vertical 9:16 phone-like frame centered on the page */
+.player-wrapper.tiktok-style {
+    aspect-ratio: 9 / 16;
+    height: auto;
+    width: min(100%, calc((100vh - var(--header-height)) * 9 / 16));
+    max-height: 100%;
+    border-radius: 16px;
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* Fullscreen: always fill the screen, no rounding or aspect constraints */
+.player-wrapper:fullscreen,
+.player-wrapper:-webkit-full-screen {
+    aspect-ratio: auto;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+    box-shadow: none;
+    border: none;
 }
 
 #video-element {
@@ -234,9 +288,17 @@ body.dark-theme {
     height: 100%;
     object-fit: contain;
     display: block;
+    background-color: #000;
 }
 
-/* Loading Spinner */
+/* TikTok mode crops the video like TikTok does */
+.player-wrapper.tiktok-style #video-element {
+    object-fit: cover;
+}
+
+/* ==========================================
+   LOADING SPINNER
+   ========================================== */
 .loading-spinner {
     position: absolute;
     top: 50%;
@@ -247,9 +309,9 @@ body.dark-theme {
 }
 
 .spinner {
-    width: 50px;
-    height: 50px;
-    border: 4px solid rgba(255, 255, 255, 0.3);
+    width: 54px;
+    height: 54px;
+    border: 4px solid rgba(255, 255, 255, 0.25);
     border-top-color: var(--accent-color);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
@@ -259,7 +321,88 @@ body.dark-theme {
     to { transform: rotate(360deg); }
 }
 
-/* Double Tap / Keypress Animation Indicator */
+/* ==========================================
+   CENTER PLAY / PAUSE FLASH
+   ========================================== */
+.center-flash {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.6);
+    z-index: 22;
+    pointer-events: none;
+    opacity: 0;
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.center-flash i {
+    color: #fff;
+    font-size: 2rem;
+    line-height: 1;
+}
+
+.center-flash .fa-play {
+    padding-left: 6px; /* optical centering of the play triangle */
+}
+
+.center-flash.show {
+    animation: centerFlash 0.5s ease forwards;
+}
+
+@keyframes centerFlash {
+    0%   { opacity: 0.9; transform: translate(-50%, -50%) scale(0.6); }
+    100% { opacity: 0;   transform: translate(-50%, -50%) scale(1.4); }
+}
+
+/* ==========================================
+   REPLAY OVERLAY (end screen)
+   ========================================== */
+.replay-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 24;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.replay-button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    background: rgba(28, 28, 28, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #fff;
+    padding: 22px 34px;
+    border-radius: 14px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    transition: background 0.2s, transform 0.15s;
+}
+
+.replay-button:hover {
+    background: rgba(48, 48, 48, 0.95);
+    transform: scale(1.03);
+}
+
+.replay-button i {
+    font-size: 2.2rem;
+    color: var(--accent-color);
+    line-height: 1;
+}
+
+/* ==========================================
+   DOUBLE TAP / SKIP INDICATOR
+   ========================================== */
 .double-tap-indicator {
     position: absolute;
     top: 50%;
@@ -268,7 +411,7 @@ body.dark-theme {
     z-index: 25;
     pointer-events: none;
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.25s ease;
 }
 
 .double-tap-indicator.show {
@@ -276,46 +419,59 @@ body.dark-theme {
 }
 
 .tap-animation {
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.75);
     padding: 12px 24px;
     border-radius: 30px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     color: white;
     font-weight: 600;
-    font-size: 1.1rem;
+    font-size: 1.05rem;
     backdrop-filter: blur(4px);
     box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    line-height: 1;
 }
 
-/* Subtitle Overlay */
+.tap-animation i {
+    line-height: 1;
+}
+
+/* ==========================================
+   SUBTITLE OVERLAY
+   ========================================== */
 .subtitle-overlay {
     position: absolute;
-    bottom: 80px;
+    bottom: 78px;
     left: 50%;
     transform: translateX(-50%);
-    width: 80%;
+    width: 84%;
     text-align: center;
     z-index: 15;
     pointer-events: none;
-    font-size: 1.5rem;
+    font-size: 1.35rem;
     font-weight: 600;
     color: #fff;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.9), -2px -2px 4px rgba(0,0,0,0.9), 0px 0px 8px rgba(0,0,0,0.8);
-    line-height: 1.3;
-    padding: 0 20px;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.9), -2px -2px 4px rgba(0,0,0,0.9), 0 0 10px rgba(0,0,0,0.85);
+    line-height: 1.35;
+    white-space: pre-line;
 }
 
-/* TikTok Style Sidebar */
+.subtitle-overlay:empty {
+    display: none;
+}
+
+/* ==========================================
+   TIKTOK ACTION RAIL
+   ========================================== */
 .tiktok-sidebar {
     position: absolute;
-    right: 20px;
-    bottom: 100px;
+    right: 14px;
+    bottom: 108px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 20px;
+    gap: 22px;
     z-index: 25;
     transition: opacity 0.3s;
 }
@@ -324,76 +480,78 @@ body.dark-theme {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     cursor: pointer;
     color: white;
-    font-size: 1.5rem;
-    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.8));
-    transition: transform 0.2s;
+    font-size: 1.6rem;
+    background: none;
+    border: none;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.85));
+    transition: transform 0.15s;
+    line-height: 1;
+    padding: 0;
+}
+
+.tiktok-action-btn i {
+    line-height: 1;
 }
 
 .tiktok-action-btn:hover {
-    transform: scale(1.1);
+    transform: scale(1.12);
 }
 
 .tiktok-action-btn .count {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     font-weight: 600;
+    color: #fff;
+}
+
+.tiktok-action-btn.liked {
+    color: var(--accent-color);
 }
 
 .tiktok-sound-disk {
-    width: 45px;
-    height: 45px;
+    width: 46px;
+    height: 46px;
     border-radius: 50%;
-    background: #222;
+    background: radial-gradient(circle at center, #555 0%, #1a1a1a 70%);
     border: 3px solid #333;
     display: flex;
     align-items: center;
     justify-content: center;
     color: white;
-    font-size: 1.1rem;
+    font-size: 1.15rem;
     box-shadow: 0 4px 10px rgba(0,0,0,0.6);
 }
 
-/* TikTok Mode Layout Adjustments */
-.player-wrapper.tiktok-style .custom-controls-overlay {
-    right: 80px;
-    left: 20px;
-    bottom: 20px;
-    width: auto;
-    background: transparent;
-    padding: 0;
+.tiktok-sound-disk i {
+    line-height: 1;
+    animation: disk-spin 3.5s linear infinite;
 }
 
-.player-wrapper.tiktok-style .controls-row {
-    background: rgba(0,0,0,0.4);
-    border-radius: 12px;
-    padding: 8px 12px;
-    backdrop-filter: blur(6px);
+.tiktok-sound-disk i.paused {
+    animation-play-state: paused;
 }
 
-.player-wrapper.tiktok-style .progress-container {
-    margin-bottom: 8px;
+@keyframes disk-spin {
+    to { transform: rotate(360deg); }
 }
 
-/* Custom Controls Overlay */
+/* ==========================================
+   CUSTOM CONTROLS OVERLAY
+   ========================================== */
 .custom-controls-overlay {
     position: absolute;
     bottom: 0;
     left: 0;
     right: 0;
     background: var(--overlay-gradient);
-    padding: 20px 16px 12px 16px;
+    padding: 26px 16px 12px 16px;
     display: flex;
     flex-direction: column;
     z-index: 30;
     opacity: 1;
     transition: opacity 0.3s ease;
-}
-
-.player-wrapper.hide-controls .custom-controls-overlay {
-    opacity: 0;
-    pointer-events: none;
 }
 
 .player-wrapper.hide-controls {
@@ -406,7 +564,9 @@ body.dark-theme {
     pointer-events: none;
 }
 
-/* Progress Bar */
+/* ==========================================
+   PROGRESS BAR
+   ========================================== */
 .progress-container {
     position: relative;
     height: 5px;
@@ -416,6 +576,7 @@ body.dark-theme {
     margin-bottom: 10px;
     border-radius: 3px;
     transition: height 0.15s ease;
+    touch-action: none; /* required for pointer-event scrubbing on touch screens */
 }
 
 .progress-container:hover {
@@ -427,6 +588,7 @@ body.dark-theme {
     top: 0;
     left: 0;
     height: 100%;
+    width: 0;
     background: rgba(255, 255, 255, 0.4);
     border-radius: 3px;
     pointer-events: none;
@@ -437,6 +599,7 @@ body.dark-theme {
     top: 0;
     left: 0;
     height: 100%;
+    width: 0;
     background: var(--accent-color);
     border-radius: 3px;
     pointer-events: none;
@@ -457,17 +620,18 @@ body.dark-theme {
     box-shadow: 0 0 4px rgba(0,0,0,0.8);
 }
 
-.progress-container:hover .progress-scrubber {
+.progress-container:hover .progress-scrubber,
+.progress-container.scrubbing .progress-scrubber {
     opacity: 1;
 }
 
 .progress-tooltip {
     position: absolute;
-    bottom: 18px;
+    bottom: 16px;
     transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.85);
     color: white;
-    padding: 3px 6px;
+    padding: 3px 8px;
     border-radius: 4px;
     font-size: 0.75rem;
     font-weight: 500;
@@ -475,34 +639,59 @@ body.dark-theme {
     display: none;
     white-space: nowrap;
     border: 1px solid rgba(255,255,255,0.2);
+    z-index: 5;
 }
 
-/* Controls Row */
+/* ==========================================
+   CONTROLS ROW
+   ========================================== */
 .controls-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
 }
 
 .controls-left, .controls-right {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
+    min-width: 0;
 }
 
 .control-btn {
+    position: relative; /* anchor for the CC indicator dot */
     background: transparent;
     border: none;
     color: white;
     font-size: 1.1rem;
     cursor: pointer;
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
+    padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 50%;
     transition: background 0.2s, transform 0.1s;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.control-btn i {
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Optical correction: the play triangle looks off-center without a slight nudge */
+#btn-play-pause .fa-play {
+    padding-left: 3px;
+}
+
+#btn-play-pause .fa-pause {
+    padding-left: 0;
 }
 
 .control-btn:hover {
@@ -510,138 +699,155 @@ body.dark-theme {
 }
 
 .control-btn:active {
-    transform: scale(0.95);
+    transform: scale(0.93);
 }
 
-/* Volume Slider */
+.control-btn.active {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+/* Volume */
 .volume-container {
     display: flex;
     align-items: center;
-    gap: 4px;
-}
-
-.volume-slider-wrapper {
-    width: 0;
-    overflow: hidden;
-    transition: width 0.2s ease;
-    display: flex;
-    align-items: center;
-}
-
-.volume-container:hover .volume-slider-wrapper {
-    width: 70px;
+    gap: 6px;
 }
 
 #volume-slider {
-    width: 70px;
+    width: 76px;
     accent-color: var(--accent-color);
     cursor: pointer;
     height: 4px;
 }
 
-/* Volume Boost Button */
+/* Volume Boost */
 .boost-btn {
     width: auto !important;
-    padding: 0 8px;
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.1);
-    font-size: 0.75rem;
+    flex-shrink: 0;
+    padding: 0 9px;
+    height: 30px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.12);
+    font-size: 0.72rem;
     font-weight: 700;
-    letter-spacing: 0.5px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    letter-spacing: 0.8px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    align-self: center;
+}
+
+.boost-btn .boost-text {
+    line-height: 1;
 }
 
 .boost-btn.active {
     background: var(--accent-color);
     border-color: var(--accent-color);
-    box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+    box-shadow: 0 0 10px rgba(255, 0, 0, 0.45);
 }
 
 .time-display {
     font-size: 0.85rem;
     color: #e1e1e1;
     font-weight: 500;
-    margin-left: 4px;
+    margin-left: 2px;
     white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 
+/* Subtitles ON indicator — YouTube-style red underline bar */
 .cc-indicator {
     position: absolute;
-    bottom: 6px;
-    right: 6px;
-    width: 6px;
-    height: 6px;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 18px;
+    height: 3px;
+    border-radius: 2px;
     background: var(--accent-color);
-    border-radius: 50%;
     display: none;
+    pointer-events: none;
 }
 
 .cc-indicator.active {
     display: block;
 }
 
-/* Settings Popup Menu */
+/* ==========================================
+   SETTINGS POPUP MENU
+   ========================================== */
 .settings-menu {
     position: absolute;
-    bottom: 70px;
-    right: 20px;
-    background: rgba(28, 28, 28, 0.95);
+    bottom: 68px;
+    right: 16px;
+    background: rgba(28, 28, 28, 0.96);
     backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 12px;
-    width: 280px;
+    width: 288px;
+    max-width: calc(100% - 32px);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
     z-index: 40;
     overflow: hidden;
-    animation: menuFadeIn 0.15s ease;
+    animation: menuFadeIn 0.16s ease;
 }
 
 @keyframes menuFadeIn {
     from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 .settings-view {
     padding: 8px 0;
 }
 
-.settings-view.hidden {
-    display: none;
-}
-
 .settings-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
+    gap: 10px;
+    padding: 11px 16px;
     cursor: pointer;
     font-size: 0.9rem;
     color: white;
     transition: background 0.15s;
+    line-height: 1.25;
+    user-select: none;
 }
 
 .settings-item:hover {
     background: rgba(255, 255, 255, 0.1);
 }
 
-.settings-item .setting-label {
+.setting-label {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
+    min-width: 0;
 }
 
-.settings-item .setting-label i {
-    width: 16px;
+.setting-label i {
+    width: 18px;
+    flex-shrink: 0;
     text-align: center;
     color: var(--text-secondary);
+    line-height: 1;
 }
 
-.settings-item .setting-value {
+.setting-value {
     color: var(--text-secondary);
-    font-size: 0.85rem;
+    font-size: 0.84rem;
     display: flex;
     align-items: center;
     gap: 6px;
+    white-space: nowrap;
+    max-width: 55%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.setting-value i {
+    line-height: 1;
+    flex-shrink: 0;
 }
 
 .settings-divider {
@@ -664,6 +870,7 @@ body.dark-theme {
     display: inline-block;
     width: 36px;
     height: 20px;
+    flex-shrink: 0;
 }
 
 .switch input {
@@ -676,7 +883,7 @@ body.dark-theme {
     position: absolute;
     cursor: pointer;
     top: 0; left: 0; right: 0; bottom: 0;
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: rgba(255, 255, 255, 0.25);
     transition: .3s;
     border-radius: 20px;
 }
@@ -717,25 +924,38 @@ input:checked + .slider-toggle:before {
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 4px;
+    gap: 10px;
+    padding: 6px 4px;
+    line-height: 1;
+    border-radius: 6px;
 }
 
 .back-btn:hover {
     color: var(--accent-color);
 }
 
+.back-btn i {
+    line-height: 1;
+}
+
 .settings-options {
-    max-height: 240px;
+    max-height: 264px;
     overflow-y: auto;
 }
 
 .settings-option {
-    padding: 10px 16px;
+    padding: 10px 16px 10px 46px; /* indent like YouTube's submenu checkmarks row */
+    position: relative;
     cursor: pointer;
     font-size: 0.9rem;
     color: white;
     transition: background 0.15s;
+    line-height: 1.3;
+    user-select: none;
+    border: none;
+    background: transparent;
+    width: 100%;
+    text-align: left;
 }
 
 .settings-option:hover {
@@ -743,8 +963,21 @@ input:checked + .slider-toggle:before {
 }
 
 .settings-option.active {
-    color: var(--accent-color);
-    font-weight: 600;
+    color: #fff;
+    font-weight: 500;
+}
+
+/* YouTube-style check mark before the active option */
+.settings-option.active::before {
+    content: "\f00c";
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    position: absolute;
+    left: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #fff;
+    font-size: 0.8rem;
 }
 
 .settings-custom-speed {
@@ -767,26 +1000,125 @@ input:checked + .slider-toggle:before {
 
 .custom-speed-input-group input {
     flex: 1;
+    min-width: 0;
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
+    border-radius: 6px;
     color: white;
-    padding: 4px 8px;
+    padding: 6px 10px;
     font-size: 0.9rem;
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
+.custom-speed-input-group input:focus {
+    outline: none;
+    border-color: #3ea6ff;
+}
+
+/* ==========================================
+   TIKTOK STYLE LAYOUT ADJUSTMENTS
+   ========================================== */
+.player-wrapper.tiktok-style .custom-controls-overlay {
+    right: 76px;
+    left: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%);
+    padding: 20px 14px 10px 14px;
+}
+
+.player-wrapper.tiktok-style .controls-row {
+    background: rgba(0,0,0,0.35);
+    border-radius: 12px;
+    padding: 6px 8px;
+    backdrop-filter: blur(6px);
+}
+
+.player-wrapper.tiktok-style .progress-container {
+    margin-bottom: 8px;
+}
+
+.player-wrapper.tiktok-style .boost-btn,
+.player-wrapper.tiktok-style #btn-prev-frame,
+.player-wrapper.tiktok-style #btn-next-frame,
+.player-wrapper.tiktok-style #btn-theater,
+.player-wrapper.tiktok-style #btn-pip {
+    display: none;
+}
+
+.player-wrapper.tiktok-style .time-display {
+    display: none;
+}
+
+.player-wrapper.tiktok-style #volume-slider {
+    width: 56px;
+}
+
+/* ==========================================
+   TOAST NOTIFICATION
+   ========================================== */
+.toast {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translate(-50%, 12px);
+    background: #f1f1f1;
+    color: #0f0f0f;
+    font-size: 0.88rem;
+    font-weight: 500;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    max-width: min(480px, calc(100vw - 40px));
+    text-align: center;
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
+/* ==========================================
+   RESPONSIVE ADJUSTMENTS
+   ========================================== */
+@media (max-width: 900px) {
     .app-header {
-        padding: 8px 12px;
+        padding: 0 12px;
+        gap: 8px;
     }
     .logo span {
         display: none;
     }
-    .controls-row {
+    .header-actions {
         gap: 6px;
+    }
+    #volume-slider {
+        width: 56px;
+    }
+}
+
+@media (max-width: 640px) {
+    .btn-label {
+        display: none;
+    }
+    .btn {
+        padding: 8px 12px;
+    }
+    .controls-left, .controls-right {
+        gap: 2px;
+    }
+    #volume-slider {
+        display: none; /* keep just the mute button on small screens */
     }
     .time-display {
         font-size: 0.75rem;
+    }
+    .boost-btn {
+        display: none;
+    }
+    .settings-menu {
+        right: 8px;
+        bottom: 60px;
     }
 }
