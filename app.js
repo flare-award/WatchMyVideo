@@ -26,9 +26,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const videoFileInput = $('video-file-input');
     const subFileInput = $('sub-file-input');
-    const btnCloseVideo = $('btn-close-video');
+    const tkVolumeSlider = $('tk-volume-slider');
+    const tkVolumeValue = $('tk-sheet-volume-value');
+    const btnCloseVideoHeader = $('btn-close-header');
+    const btnCloseVideoAmbient = $('btn-close-ambient');
+    const audioCover = $('audio-cover');
+    const qualityCanvasEl = $('quality-canvas');
+    const btnLoopToggle = $('btn-loop-toggle');
+    const btnAutoplay = $('btn-autoplay');
+    const btnScreenshot = $('btn-screenshot');
+    const settingsQualityBadge = $('settings-quality-badge');
+    const studioLightCheckbox = $('studio-light-checkbox');
+    const seekPreview = $('seek-preview');
+    const seekPreviewCanvas = $('seek-preview-canvas');
+    const ambientGlow = $('ambient-glow');
     const qualityCanvas = $('quality-canvas');
-    const qualityCtx = qualityCanvas.getContext('2d');
+    let qualityCtx = null;   // created lazily, only for the non-WebGL fallback
 
     // Controls
     const btnPlayPause = $('btn-play-pause');
@@ -66,10 +79,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentQualityLabel = $('current-quality-label');
     const currentSubLabel = $('current-sub-label');
     const pitchCheckbox = $('pitch-checkbox');
-    const loopCheckbox = $('loop-checkbox');
+    const loopCheckbox = null; // removed — loop lives in the repeat button
     const speedSlider = $('speed-slider');
     const speedSliderValue = $('speed-slider-value');
-    const speedValueHint = $('speed-value-hint');
     const speedDecrease = $('speed-decrease');
     const speedIncrease = $('speed-increase');
     const speedPresets = $('speed-presets');
@@ -134,6 +146,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const ESTIMATED_FPS = 30;
 
     let isTheater = false;
+    let currentIsAudio = false;
+    let autoplayOn = storageGet('wmv_autoplay', '0') === '1';
+    let seekPreviewEnabled = storageGet('wmv_seek_preview', '1') === '1';
+    let studioLight = storageGet('wmv_studio_light', '0') === '1';
     let isMuted = false;
     let volumeBeforeMute = 1;
     let isBoosted = false;
@@ -171,6 +187,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     //  Storage helpers (localStorage, private-mode safe)
     // =========================================================
+    function stripExtension(name) {
+        return String(name || '').replace(/\.(mp4|webm|mkv|mov|avi|ogv|m4v|mp3|wav|flac|ogg|m4a|aac)$/i, '');
+    }
+
     function storageGet(key, fallback = null) {
         try {
             const v = localStorage.getItem(key);
@@ -330,9 +350,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function pokeUI() {
         clearIdle();
+        document.body.classList.remove('idle');
         scheduleIdle();
     }
 
+    function closeSettingsMenuIfOpen() {
+        if (!settingsMenu.classList.contains('hidden')) {
+            settingsMenu.classList.add('hidden');
+            btnSettings.classList.remove('active');
+            const gear = document.getElementById('settings-gear-icon');
+            if (gear) gear.classList.remove('gear-open');
+        }
+        closeShareSheet();
+    }
+
+    playerWrapper.addEventListener('mouseenter', () => pokeUI());
+    playerWrapper.addEventListener('mouseleave', () => {
+        // Cursor left the player area — hide the chrome right away.
+        clearIdle();
+        closeSettingsMenuIfOpen();
+        document.body.classList.add('idle');
+    });
     ['mousemove', 'wheel'].forEach((evt) => {
         document.addEventListener(evt, pokeUI, { passive: true });
     });
@@ -360,7 +398,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         if (mode !== 'tiktok') {
             closeCommentsDrawer();
+            closeShareSheet();
         }
+        applyLoopForMode(mode);
         if (persist) storageSet(MODE_KEY, mode);
         pokeUI();
     }
@@ -372,7 +412,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     //  Loading videos (file input / drag & drop)
     // =========================================================
-    function startPlaybackSession(sourceUrl, videoKey, fileName, fileSize) {
+    function isAudioFile(file) {
+        return (file.type && file.type.startsWith('audio/')) || /\.(mp3|wav|flac|ogg|m4a|aac)$/i.test(file.name || '');
+    }
+
+    function startPlaybackSession(sourceUrl, videoKey, fileName, fileSize, opts = {}) {
         stopQualityProxy();
         qualitiesComputed = false;
         currentQualityKey = 'original';
@@ -380,6 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentFileUrl = sourceUrl;
         currentFileName = fileName || 'Видео';
         currentFileSize = fileSize || 0;
+        currentIsAudio = !!opts.audio;
 
         video.src = sourceUrl;
         video.load();
@@ -391,10 +436,40 @@ document.addEventListener('DOMContentLoaded', () => {
         welcomeScreen.classList.add('hidden');
         appShell.classList.remove('hidden');
         replayOverlay.classList.add('hidden');
+        playerWrapper.classList.remove('video-ended');
+        playerWrapper.classList.toggle('audio-mode', currentIsAudio);
+        document.body.classList.add('video-active');
+        document.body.classList.toggle('is-audio', currentIsAudio);
+        if (audioCover) {
+            if (currentIsAudio) {
+                if (opts.coverUrl) {
+                    audioCover.src = opts.coverUrl;
+                } else {
+                    audioCover.src = generateAudioCover(stripExtension(currentFileName) || 'Аудио');
+                }
+                audioCover.alt = stripExtension(currentFileName) || 'Обложка трека';
+                audioCover.classList.remove('hidden');
+                setAmbientColor(hueFromString(currentFileName || 'audio'));
+            } else {
+                audioCover.removeAttribute('src');
+                audioCover.classList.add('hidden');
+            }
+        }
 
-        // Do not auto-start — the video waits for an explicit user action.
-        video.pause();
-        updatePlayPauseButton(false);
+        // Autoplay only when the switch is on — otherwise wait for a click.
+        applyLoopForMode(currentMode);
+        if (autoplayOn) {
+            // Try immediately, and again once data is ready — the browser
+            // decides whether the gesture/autoplay policy allows it.
+            const tryPlay = () => { return video.play().then(() => true).catch(err => { console.warn('autoplay blocked:', err.name, err.message); return false; }); };
+            let played = false;
+            tryPlay().then(ok => { played = ok; });
+            video.addEventListener('loadedmetadata', () => { tryPlay().then(ok => { played = played || ok; }); }, { once: true });
+            video.addEventListener('canplay', () => { tryPlay(); }, { once: true });
+        } else {
+            video.pause();
+            updatePlayPauseButton(false);
+        }
 
         updateQualityUI();
         refreshVideoInfo();
@@ -406,15 +481,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function loadVideoFromFile(file) {
         if (!file) return;
-        const looksLikeVideo = file.type.startsWith('video/') || /\.(mkv|avi|mov|webm|mp4|ogv|m4v)$/i.test(file.name);
-        if (!looksLikeVideo) {
-            showToast('Пожалуйста, выберите видеофайл');
+        const audio = isAudioFile(file);
+        const looksLikeVideo = (file.type && file.type.startsWith('video/')) || /\.(mkv|avi|mov|webm|mp4|ogv|m4v)$/i.test(file.name);
+        if (!audio && !looksLikeVideo) {
+            showToast('Пожалуйста, выберите видео- или аудиофайл');
             return;
         }
         const url = URL.createObjectURL(file);
         const key = `file:${file.name}:${file.size}`;
-        registerRecentVideo({ key, title: file.name, url, isDemo: false, size: file.size });
-        startPlaybackSession(url, key, file.name, file.size);
+        registerRecentVideo({ key, title: stripExtension(file.name), url, isDemo: false, size: file.size });
+        if (audio) {
+            // Try to pull embedded cover art (ID3 APIC); fall back to a generated cover.
+            extractEmbeddedCover(file).then((blob) => {
+                startPlaybackSession(url, key, file.name, file.size, { audio: true, coverUrl: blob ? URL.createObjectURL(blob) : null });
+            }).catch(() => {
+                startPlaybackSession(url, key, file.name, file.size, { audio: true, coverUrl: null });
+            });
+        } else {
+            startPlaybackSession(url, key, file.name, file.size, { audio: false });
+        }
     }
 
     videoFileInput.addEventListener('change', (e) => {
@@ -446,7 +531,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('drop', (e) => {
         e.preventDefault();
         const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-        if (file && (file.type.startsWith('video/') || /\.(mkv|avi|mov|webm|mp4|ogv|m4v)$/i.test(file.name))) {
+        if (file && ((file.type && (file.type.startsWith('video/') || file.type.startsWith('audio/'))) || /\.(mkv|avi|mov|webm|mp4|ogv|m4v|mp3|wav|flac|ogg|m4a|aac)$/i.test(file.name))) {
             loadVideoFromFile(file);
         }
     });
@@ -474,6 +559,15 @@ document.addEventListener('DOMContentLoaded', () => {
         updateSubtitlesMenu();
         subtitleOverlay.textContent = '';
 
+        clearSleepTimer();
+        currentIsAudio = false;
+        playerWrapper.classList.remove('audio-mode', 'video-ended', 'scrubbing');
+        document.body.classList.remove('video-active', 'is-audio');
+        if (audioCover) {
+            audioCover.classList.add('hidden');
+            audioCover.removeAttribute('src');
+        }
+        updateCloseButtonsVisibility();
         currentTimeEl.textContent = '0:00';
         durationEl.textContent = '0:00';
         progressPlayed.style.width = '0%';
@@ -483,6 +577,8 @@ document.addEventListener('DOMContentLoaded', () => {
         loadingSpinner.classList.add('hidden');
         replayOverlay.classList.add('hidden');
 
+        playerWrapper.style.removeProperty('--video-ar');
+        playerWrapper.style.removeProperty('--video-ar-num');
         document.body.classList.remove('idle');
         document.title = 'WatchMyVideo';
         welcomeScreen.classList.remove('hidden');
@@ -492,7 +588,9 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Видео закрыто');
     }
 
-    btnCloseVideo.addEventListener('click', closeCurrentVideo);
+    [btnCloseVideoHeader, btnCloseVideoAmbient].forEach((btn) => {
+        if (btn) btn.addEventListener('click', closeCurrentVideo);
+    });
 
     // =========================================================
     //  Suggestions feed ("Похожие видео")
@@ -541,7 +639,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const item = document.createElement('button');
             item.type = 'button';
             item.className = 'suggest-item' + (v.key === currentVideoKey ? ' active' : '');
-            item.title = v.title;
+            item.title = stripExtension(v.title);
 
             const thumb = document.createElement('div');
             thumb.className = 'suggest-thumb';
@@ -668,21 +766,22 @@ document.addEventListener('DOMContentLoaded', () => {
     //  Video info block (title / description / channel)
     // =========================================================
     function refreshVideoInfo() {
-        ytTitle.textContent = currentFileName;
-        ytAvatar.textContent = (currentFileName[0] || 'W').toUpperCase();
+        const displayName = stripExtension(currentFileName) || currentFileName;
+        ytTitle.textContent = displayName;
+        ytAvatar.textContent = (displayName[0] || 'W').toUpperCase();
         ytDescriptionText.textContent = buildDescription();
-        document.title = `${currentFileName} — WatchMyVideo`;
+        document.title = `${displayName} - WatchMyVideo`;
 
-        const handle = slugify(currentFileName);
+        const handle = slugify(displayName);
         tkAvatar.textContent = (handle[0] || 'W').toUpperCase();
         tkAuthor.textContent = '@' + handle;
-        tkDesc.textContent = currentFileName;
+        tkDesc.textContent = displayName;
         tkMusicText.textContent = `оригинальный звук — ${tkAuthor.textContent}`;
     }
 
     function buildDescription() {
         const lines = [];
-        lines.push(currentFileName);
+        lines.push(stripExtension(currentFileName) || currentFileName);
         const parts = [];
         if (currentFileSize) parts.push(formatBytes(currentFileSize));
         if (hasDuration()) parts.push('Длительность: ' + formatTime(video.duration));
@@ -706,6 +805,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let qualitiesComputed = false;
 
     function afterMetadataReady() {
+        if (video.videoWidth && video.videoHeight) {
+            const ar = video.videoWidth / video.videoHeight;
+            playerWrapper.style.setProperty('--video-ar', `${video.videoWidth} / ${video.videoHeight}`);
+            playerWrapper.style.setProperty('--video-ar-num', String(ar));
+        }
         durationEl.textContent = formatTime(video.duration);
         if (!qualitiesComputed) {
             qualitiesComputed = true;
@@ -845,48 +949,32 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast(subscribed ? 'Вы отписались' : 'Спасибо за подписку!');
     }
 
-    async function shareCurrentVideo() {
-        const shareData = {
-            title: currentFileName || 'WatchMyVideo',
-            text: currentFileName || 'Видео в WatchMyVideo',
-            url: window.location.href,
-        };
+    // Share / Download — deliberately inert stubs that look like the real
+    // thing («Сохранить» keeps working as before).
+    function shareStub() {
         try {
-            if (navigator.share) {
-                await navigator.share(shareData);
-                return;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(window.location.href).catch(() => {});
             }
-            throw new Error('Web Share unavailable');
-        } catch (err) {
-            if (err && err.name === 'AbortError') return;
-            try {
-                await navigator.clipboard.writeText(shareData.url);
-                showToast('Ссылка скопирована в буфер обмена');
-            } catch (_) {
-                showToast('Буфер обмена недоступен');
-            }
-        }
+        } catch (_) { /* clipboard unavailable — the toast still confirms */ }
+        showToast('Ссылка скопирована');
+    }
+
+    function downloadStub() {
+        showToast('Скачивание начнётся…', 1600);
+        setTimeout(() => showToast('Загрузка завершена', 1800), 1700);
     }
 
     btnLike.addEventListener('click', toggleLike);
     btnDislike.addEventListener('click', toggleDislike);
     tkLike.addEventListener('click', toggleLike);
-    btnShareYt.addEventListener('click', shareCurrentVideo);
-    tkShare.addEventListener('click', shareCurrentVideo);
+    btnShareYt.addEventListener('click', shareStub);
     btnSave.addEventListener('click', toggleSave);
     tkSave.addEventListener('click', toggleSave);
     btnSubscribe.addEventListener('click', toggleSubscribe);
     tkFollow.addEventListener('click', toggleSubscribe);
 
-    btnDownload.addEventListener('click', () => {
-        if (!currentFileUrl) return;
-        const a = document.createElement('a');
-        a.href = currentFileUrl;
-        a.download = currentFileName || 'video';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-    });
+    btnDownload.addEventListener('click', downloadStub);
 
     // =========================================================
     //  Comments (YouTube section + TikTok drawer, shared storage)
@@ -1020,9 +1108,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     //  Play / pause
     // =========================================================
+    function restartVideo() {
+        playerWrapper.classList.remove('video-ended');
+        replayOverlay.classList.add('hidden');
+        video.currentTime = 0;
+        video.play().catch(() => {});
+    }
+
     function togglePlayPause() {
         if (!video.src) return;
         resumeAudioContext();
+        if (video.ended) {
+            restartVideo();
+            return;
+        }
         if (video.paused) {
             video.play().catch(() => {});
         } else {
@@ -1037,14 +1136,27 @@ document.addEventListener('DOMContentLoaded', () => {
         centerFlash.classList.add('show');
     }
 
+    function isVideoEndedState() {
+        return video.ended || (hasDuration() && isFinite(video.duration) && video.currentTime >= video.duration - 0.05);
+    }
+
     function updatePlayPauseButton(playing) {
+        if (video.ended) {
+            playPauseIcon.className = 'fa-solid fa-repeat';
+            btnPlayPause.setAttribute('data-tooltip', 'Смотреть снова (k)');
+            btnPlayPause.setAttribute('aria-label', 'Смотреть снова');
+            clearTimeout(idleTimer);
+            return;
+        }
         if (playing) {
             playPauseIcon.className = 'fa-solid fa-pause';
-            btnPlayPause.title = 'Пауза (K)';
+            btnPlayPause.setAttribute('data-tooltip', 'Пауза (k)');
+            btnPlayPause.setAttribute('aria-label', 'Пауза');
             scheduleIdle();
         } else {
             playPauseIcon.className = 'fa-solid fa-play';
-            btnPlayPause.title = 'Воспроизвести (K)';
+            btnPlayPause.setAttribute('data-tooltip', 'Воспроизвести (k)');
+            btnPlayPause.setAttribute('aria-label', 'Воспроизвести');
             clearTimeout(idleTimer);
             document.body.classList.remove('idle');
         }
@@ -1054,6 +1166,7 @@ document.addEventListener('DOMContentLoaded', () => {
     video.addEventListener('click', togglePlayPause);
 
     video.addEventListener('play', () => {
+        playerWrapper.classList.remove('video-ended');
         updatePlayPauseButton(true);
         replayOverlay.classList.add('hidden');
         if (video.readyState >= 2) flashCenterIcon('fa-solid fa-play');
@@ -1061,7 +1174,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     video.addEventListener('pause', () => {
         updatePlayPauseButton(false);
-        flashCenterIcon('fa-solid fa-pause');
+        if (!video.ended) flashCenterIcon('fa-solid fa-pause');
     });
 
     video.addEventListener('ended', () => {
@@ -1071,17 +1184,23 @@ document.addEventListener('DOMContentLoaded', () => {
             infiniteFixPending = false;
             video.currentTime = 0;
             afterMetadataReady();
+            if (autoplayOn) video.play().catch(() => {});
             return;
         }
         if (!video.loop) {
+            playerWrapper.classList.add('video-ended');
             replayOverlay.classList.remove('hidden');
+            updatePlayPauseButton(false);
         }
     });
 
-    btnReplay.addEventListener('click', () => {
-        replayOverlay.classList.add('hidden');
-        video.currentTime = 0;
-        video.play().catch(() => {});
+    btnReplay.addEventListener('click', restartVideo);
+    replayOverlay.addEventListener('click', restartVideo);
+    replayOverlay.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            restartVideo();
+        }
     });
 
     video.addEventListener('loadstart', () => loadingSpinner.classList.remove('hidden'));
@@ -1122,6 +1241,7 @@ document.addEventListener('DOMContentLoaded', () => {
             infiniteFixPending = false;
             video.currentTime = 0;
             afterMetadataReady();
+            if (autoplayOn) video.play().catch(() => {});
             return;
         }
         if (!isDraggingProgress && hasDuration()) {
@@ -1178,6 +1298,7 @@ document.addEventListener('DOMContentLoaded', () => {
         progressTooltip.style.left = Math.max(18, Math.min(rect.width - 18, ratio * rect.width)) + 'px';
         progressTooltip.textContent = formatTime(time);
         progressTooltip.style.display = 'block';
+        showSeekPreview(ratio);
     }
 
     progressContainer.addEventListener('pointerdown', (e) => {
@@ -1185,8 +1306,10 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         isDraggingProgress = true;
         progressContainer.classList.add('scrubbing');
+        playerWrapper.classList.add('scrubbing');
         try { progressContainer.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
         replayOverlay.classList.add('hidden');
+        playerWrapper.classList.remove('video-ended');
         seekToPosition(e);
         pokeUI();
     });
@@ -1201,7 +1324,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isDraggingProgress) return;
         isDraggingProgress = false;
         progressContainer.classList.remove('scrubbing');
+        playerWrapper.classList.remove('scrubbing');
         progressTooltip.style.display = 'none';
+        hideSeekPreview();
         scheduleIdle();
     }
 
@@ -1255,7 +1380,7 @@ document.addEventListener('DOMContentLoaded', () => {
     //  Playback speed & pitch
     // =========================================================
     function speedDisplayName(speed) {
-        return speed === 1 ? 'Нормальная (1x)' : `${parseFloat(speed.toFixed(2))}x`;
+        return speed === 1 ? 'Обычная' : `${parseFloat(speed.toFixed(2))}x`;
     }
 
     function clampSpeed(speed) {
@@ -1276,7 +1401,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function speedBigValue(speed) {
-        return `${parseFloat(speed.toFixed(2))}x`;
+        return `${Number(speed).toFixed(2)}x`;
     }
 
     function paintSpeedSlider() {
@@ -1291,8 +1416,7 @@ document.addEventListener('DOMContentLoaded', () => {
         speedSlider.value = String(rateToSliderPos(playbackSpeed));
         speedSlider.setAttribute('aria-valuenow', String(playbackSpeed));
         speedSlider.setAttribute('aria-valuetext', speedBigValue(playbackSpeed));
-        speedSliderValue.textContent = speedBigValue(playbackSpeed);
-        speedValueHint.textContent = playbackSpeed === 1 ? 'Нормальная скорость' : (playbackSpeed < 1 ? 'Замедление' : 'Ускорение');
+        speedSliderValue.textContent = playbackSpeed.toFixed(2) + 'x';
         speedPresets.querySelectorAll('.speed-pill').forEach((pill) => {
             pill.classList.toggle('active', Math.abs(parseFloat(pill.getAttribute('data-speed')) - playbackSpeed) < 1e-9);
         });
@@ -1333,12 +1457,531 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // =========================================================
-    //  Loop
+    //  Loop — repeat button next to play; per-mode memory
     // =========================================================
-    loopCheckbox.addEventListener('change', (e) => {
-        isLooping = e.target.checked;
+    const loopModeByMode = { player: false, youtube: false, tiktok: true };
+    function applyLoopForMode(mode) {
+        isLooping = !!loopModeByMode[mode];
         video.loop = isLooping;
+        if (btnLoopToggle) {
+            btnLoopToggle.classList.toggle('active', isLooping);
+            btnLoopToggle.setAttribute('aria-pressed', String(isLooping));
+        }
+        const tkLoop = document.getElementById('tk-loop-toggle');
+        if (tkLoop) {
+            tkLoop.classList.toggle('active', isLooping);
+            tkLoop.setAttribute('aria-pressed', String(isLooping));
+        }
+    }
+    function toggleLoop() {
+        loopModeByMode[currentMode] = !loopModeByMode[currentMode];
+        applyLoopForMode(currentMode);
+        showToast(isLooping ? 'Повтор включён' : 'Повтор выключен', 1600);
+    }
+    if (btnLoopToggle) btnLoopToggle.addEventListener('click', toggleLoop);
+
+    // =========================================================
+    //  Close buttons in the top bar (video loaded state only)
+    // =========================================================
+    function updateCloseButtonsVisibility() {
+        document.body.classList.toggle('video-active', !!currentVideoKey);
+    }
+
+    // =========================================================
+    //  Audio files — embedded cover (ID3 APIC) + generated fallback
+    // =========================================================
+    function trackFrameSize(view, offset) {
+        // ID3v2.4 uses syncsafe sizes; v2.2/v2.3 use a plain 32-bit big-endian size.
+        const plain = view.getUint32(offset, false);
+        const syncsafe = ((view.getUint8(offset) & 0x7f) << 21) | ((view.getUint8(offset + 1) & 0x7f) << 14) | ((view.getUint8(offset + 2) & 0x7f) << 7) | (view.getUint8(offset + 3) & 0x7f);
+        if (plain > 0 && plain < view.byteLength && offset + plain <= view.byteLength) return { size: plain, syncsafe: false };
+        return { size: syncsafe, syncsafe: true };
+    }
+
+    async function extractEmbeddedCover(file) {
+        try {
+            const buf = await file.arrayBuffer();
+            const view = new DataView(buf);
+            if (view.byteLength < 10) return null;
+            if (view.getUint8(0) !== 0x49 || view.getUint8(1) !== 0x44 || view.getUint8(2) !== 0x33) return null; // "ID3"
+            const major = view.getUint8(3);
+            const sizeBytes = [6, 7, 8, 9].map((i) => view.getUint8(i));
+            const tagSize = ((sizeBytes[0] & 0x7f) << 21) | ((sizeBytes[1] & 0x7f) << 14) | ((sizeBytes[2] & 0x7f) << 7) | (sizeBytes[3] & 0x7f);
+            let offset = 10;
+            const end = Math.min(view.byteLength, 10 + tagSize);
+            const flags = view.getUint8(5);
+            if (major >= 3 && (flags & 0x40) && offset + 4 <= end) {
+                // Extended header — best-effort skip
+                const extRaw = view.getUint32(offset, false);
+                const extSync = ((view.getUint8(offset) & 0x7f) << 21) | ((view.getUint8(offset + 1) & 0x7f) << 14) | ((view.getUint8(offset + 2) & 0x7f) << 7) | (view.getUint8(offset + 3) & 0x7f);
+                const extSize = (major === 4) ? extSync : extRaw;
+                offset += (major === 4 ? extSize + 4 : extSize + 4) || 0;
+            }
+            const idLen = major <= 2 ? 3 : 4;
+            const sizeLen = major <= 2 ? 3 : 4;
+            const headerLen = idLen + sizeLen + (major <= 2 ? 0 : 2);
+            while (offset + headerLen <= end) {
+                let id = '';
+                for (let i = 0; i < idLen; i++) id += String.fromCharCode(view.getUint8(offset + i));
+                if (!/^[A-Z0-9]+$/.test(id)) break;
+                let frameSize = 0;
+                if (major === 4) {
+                    frameSize = ((view.getUint8(offset + 4) & 0x7f) << 21) | ((view.getUint8(offset + 5) & 0x7f) << 14) | ((view.getUint8(offset + 6) & 0x7f) << 7) | (view.getUint8(offset + 7) & 0x7f);
+                } else if (major === 3) {
+                    frameSize = view.getUint32(offset + 4, false);
+                } else { // v2.2 — 24-bit sizes
+                    frameSize = (view.getUint8(offset + 3) << 16) | (view.getUint8(offset + 4) << 8) | view.getUint8(offset + 5);
+                }
+                if (frameSize <= 0 || offset + headerLen + frameSize > view.byteLength) break;
+                const bodyStart = offset + headerLen;
+                if (id === 'APIC' || id === 'PIC') {
+                    let p = bodyStart;
+                    const frameEnd = bodyStart + frameSize;
+                    const encoding = view.getUint8(p); p += 1;
+                    let mime = '';
+                    if (id === 'PIC') { // v2.2: 3-char format instead of mime string
+                        mime = 'image/' + String.fromCharCode(view.getUint8(p), view.getUint8(p + 1), view.getUint8(p + 2)).toLowerCase().replace('jpg', 'jpeg');
+                        p += 3;
+                    } else {
+                        while (p < frameEnd && view.getUint8(p) !== 0) { mime += String.fromCharCode(view.getUint8(p)); p += 1; }
+                        p += 1; // null terminator
+                    }
+                    p += 1; // picture type byte
+                    if (encoding === 1 || encoding === 2) { // UTF-16 description: skip to double-null
+                        while (p + 1 < frameEnd) {
+                            if (view.getUint8(p) === 0 && view.getUint8(p + 1) === 0) { p += 2; break; }
+                            p += 2;
+                        }
+                    } else {
+                        while (p < frameEnd && view.getUint8(p) !== 0) p += 1;
+                        p += 1;
+                    }
+                    if (p >= frameEnd) return null;
+                    const data = buf.slice(p, frameEnd);
+                    return new Blob([data], { type: mime || 'image/jpeg' });
+                }
+                offset += headerLen + frameSize;
+            }
+            return null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function generateAudioCover(title) {
+        const text = (title || 'Аудио').trim() || 'Аудио';
+        const c = document.createElement('canvas');
+        c.width = 512; c.height = 512;
+        const ctx = c.getContext('2d');
+        const h = hueFromString(text);
+        const grad = ctx.createLinearGradient(0, 0, 512, 512);
+        grad.addColorStop(0, `hsl(${h} 62% 44%)`);
+        grad.addColorStop(1, `hsl(${(h + 75) % 360} 65% 15%)`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 512, 512);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.07)';
+        ctx.beginPath(); ctx.arc(438, 74, 190, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(48, 452, 150, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.font = '900 185px "Font Awesome 7 Free", "Font Awesome 6 Free", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('\uf001', 256, 214); // fa-music glyph
+        // Track title, up to two lines
+        ctx.font = '700 39px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.textBaseline = 'alphabetic';
+        const words = text.split(/\s+/);
+        const lines = [];
+        let line = '';
+        for (const word of words) {
+            const next = line ? line + ' ' + word : word;
+            if (ctx.measureText(next).width > 440 && line) { lines.push(line); line = word; } else { line = next; }
+            if (lines.length === 2) break;
+        }
+        if (line && lines.length < 2) lines.push(line);
+        const startY = lines.length > 1 ? 388 : 414;
+        lines.slice(0, 2).forEach((l, i) => {
+            let out = l;
+            while (ctx.measureText(out).width > 448 && out.length > 1) out = out.slice(0, -2);
+            if (out !== l) out = out.slice(0, -1) + '…';
+            ctx.fillText(out, 256, startY + i * 48);
+        });
+        return c.toDataURL('image/png');
+    }
+
+    function setAmbientColor(hue) {
+        document.body.style.setProperty('--ambient-color', `hsl(${hue} 55% 50% / 0.62)`);
+    }
+
+    // =========================================================
+    //  Профессиональное освещение — ambient glow + filmic warmth
+    // =========================================================
+    let ambientTimer = null;
+
+    function sampleAmbientFrame() {
+        try {
+            if (currentIsAudio) return;
+            const srcEl = qualityProxyOn ? qualityCanvas : video;
+            if (!srcEl) return;
+            const s = sampleAmbientFrame.canvas || (sampleAmbientFrame.canvas = Object.assign(document.createElement('canvas'), { width: 16, height: 16 }));
+            const ctx = s.getContext('2d', { willReadFrequently: true });
+            ctx.drawImage(srcEl, 0, 0, 16, 16);
+            const d = ctx.getImageData(0, 0, 16, 16).data;
+            let r = 0, g = 0, b = 0;
+            for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+            const n = d.length / 4;
+            r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
+            // Lift saturation a touch so the glow reads as "light", not mud
+            const max = Math.max(r, g, b) || 1;
+            const boost = Math.min(1.6, 190 / max);
+            r = Math.min(255, Math.round(r * boost * 1.15 + 18));
+            g = Math.min(255, Math.round(g * boost * 1.15 + 18));
+            b = Math.min(255, Math.round(b * boost * 1.15 + 18));
+            document.body.style.setProperty('--ambient-color', `rgb(${r} ${g} ${b} / 0.75)`);
+        } catch (_) { /* frame not ready — keep the previous tint */ }
+    }
+
+    function applyStudioLight() {
+        document.body.classList.toggle('studio-light', studioLight);
+        if (studioLightCheckbox) studioLightCheckbox.checked = studioLight;
+        const tk = document.getElementById('tk-studio-light');
+        if (tk) {
+            tk.classList.toggle('active', studioLight);
+            tk.setAttribute('aria-pressed', String(studioLight));
+        }
+        clearInterval(ambientTimer);
+        ambientTimer = null;
+        if (studioLight) {
+            if (currentIsAudio) setAmbientColor(hueFromString(currentFileName || 'audio'));
+            else {
+                sampleAmbientFrame();
+                ambientTimer = setInterval(sampleAmbientFrame, 700);
+            }
+        } else {
+            document.body.style.removeProperty('--ambient-color');
+        }
+    }
+
+    if (studioLightCheckbox) {
+        studioLightCheckbox.addEventListener('change', (e) => {
+            studioLight = e.target.checked;
+            storageSet('wmv_studio_light', studioLight ? '1' : '0');
+            applyStudioLight();
+            showToast(studioLight ? 'Профессиональное освещение включено' : 'Профессиональное освещение выключено', 1500);
+        });
+    }
+
+    // =========================================================
+    //  Sleep timer — «Автовыключение»
+    // =========================================================
+    const SLEEP_STEPS = [10, 15, 20, 30, 45, 60];
+    const settingsSleepView = $('settings-sleep');
+    const sleepOptionsList = $('sleep-options');
+    const currentSleepLabel = $('current-sleep-label');
+    let sleepMode = 'off';            // 'off' | 'minutes' | 'end'
+    let sleepMinutesChosen = 0;
+    let sleepDeadline = 0;
+    let sleepInterval = null;
+
+    function fmtRemainMs(ms) {
+        const totalMin = Math.max(0, Math.ceil(ms / 60000));
+        if (totalMin >= 60) {
+            const h = Math.floor(totalMin / 60);
+            const m = totalMin % 60;
+            return m ? `${h} ч ${m} мин` : `${h} ч`;
+        }
+        return `${totalMin} мин`;
+    }
+
+    function paintSleepLabel() {
+        if (!currentSleepLabel) return;
+        if (sleepMode === 'off') setChevronValue(currentSleepLabel, 'Выкл.');
+        else if (sleepMode === 'minutes') setChevronValue(currentSleepLabel, fmtRemainMs(sleepDeadline - Date.now()));
+        else setChevronValue(currentSleepLabel, 'По окончании видео');
+    }
+
+    function renderSleepOptions() {
+        if (!sleepOptionsList) return;
+        sleepOptionsList.innerHTML = '';
+        const make = (value, label, sub) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'settings-option';
+            btn.setAttribute('role', 'menuitem');
+            const isActive = (value === 'off' && sleepMode === 'off')
+                || (value === 'end' && sleepMode === 'end')
+                || (typeof value === 'number' && sleepMode === 'minutes' && sleepMinutesChosen === value);
+            if (isActive) btn.classList.add('active');
+            btn.textContent = label;
+            if (sub) {
+                const subEl = document.createElement('span');
+                subEl.className = 'settings-option-sub';
+                subEl.textContent = sub;
+                btn.appendChild(subEl);
+            }
+            btn.addEventListener('click', () => selectSleepOption(value));
+            sleepOptionsList.appendChild(btn);
+        };
+        make('off', 'ВЫКЛ');
+        SLEEP_STEPS.forEach((n) => {
+            const sub = (sleepMode === 'minutes' && sleepMinutesChosen === n) ? `Осталось ~${fmtRemainMs(sleepDeadline - Date.now())}` : null;
+            make(n, `${n} мин`, sub);
+        });
+        let endSub = 'Остановить видео в конце';
+        if (hasDuration() && isFinite(video.duration)) {
+            endSub = `Осталось ~${fmtRemainMs((video.duration - video.currentTime) * 1000)}`;
+        }
+        make('end', 'По окончании видео', endSub);
+    }
+
+    function tickSleep() {
+        if (sleepMode === 'minutes') {
+            if (Date.now() >= sleepDeadline) {
+                video.pause();
+                clearSleepTimer();
+                showToast('Автовыключение: видео приостановлено', 2800);
+                return;
+            }
+            paintSleepLabel();
+            if (settingsSleepView && !settingsSleepView.classList.contains('hidden')) renderSleepOptions();
+        } else if (sleepMode === 'end') {
+            if (settingsSleepView && !settingsSleepView.classList.contains('hidden')) renderSleepOptions();
+        }
+    }
+
+    function selectSleepOption(value) {
+        clearInterval(sleepInterval);
+        sleepInterval = null;
+        if (value === 'off') {
+            sleepMode = 'off';
+            sleepMinutesChosen = 0;
+            sleepDeadline = 0;
+            showToast('Автовыключение выключено', 1500);
+        } else if (value === 'end') {
+            sleepMode = 'end';
+            sleepMinutesChosen = 0;
+            sleepDeadline = 0;
+            showToast('Видео остановится в конце', 1500);
+        } else {
+            sleepMode = 'minutes';
+            sleepMinutesChosen = value;
+            sleepDeadline = Date.now() + value * 60000;
+            sleepInterval = setInterval(tickSleep, 1000);
+            showToast(`Видео остановится через ${value} мин`, 1800);
+        }
+        paintSleepLabel();
+        renderSleepOptions();
+    }
+
+    function clearSleepTimer() {
+        clearInterval(sleepInterval);
+        sleepInterval = null;
+        sleepMode = 'off';
+        sleepMinutesChosen = 0;
+        sleepDeadline = 0;
+        paintSleepLabel();
+        renderSleepOptions();
+    }
+
+    let lastSleepEndRender = 0;
+    video.addEventListener('timeupdate', () => {
+        if (sleepMode === 'end' && hasDuration() && isFinite(video.duration)) {
+            if (video.currentTime >= video.duration - 0.35) {
+                video.pause();
+                clearSleepTimer();
+                showToast('Автовыключение: видео приостановлено', 2800);
+                return;
+            }
+            if (settingsSleepView && !settingsSleepView.classList.contains('hidden')) {
+                const now = Date.now();
+                if (now - lastSleepEndRender > 2500) {
+                    lastSleepEndRender = now;
+                    renderSleepOptions();
+                }
+            }
+        }
     });
+
+    // =========================================================
+    //  TikTok share-style settings sheet
+    // =========================================================
+    const tkShareSheet = $('tk-share-sheet');
+    const tkSheetBackdrop = $('tk-sheet-backdrop');
+    const tkSheetOpenSubtitles = $('tk-open-subtitles');
+    const tkSheetOpenSleep = $('tk-open-sleep');
+    const tkSheetOpenSpeed = $('tk-open-speed');
+    const tkSheetOpenQuality = $('tk-open-quality');
+    const tkStudioLight = $('tk-studio-light');
+    const tkLoopSheetBtn = $('tk-loop-toggle');
+
+    function openShareSheet(open) {
+        if (!tkShareSheet) return;
+        tkShareSheet.classList.toggle('open', open);
+        if (tkSheetBackdrop) tkSheetBackdrop.classList.toggle('open', open);
+        tkShareSheet.setAttribute('aria-hidden', String(!open));
+        playerWrapper.classList.toggle('tk-sheet-open', open);
+        if (open) {
+            document.body.classList.remove('idle');
+            clearIdle();
+        } else {
+            scheduleIdle();
+        }
+    }
+
+    function closeShareSheet() {
+        openShareSheet(false);
+    }
+
+    if (tkShare) {
+        tkShare.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openShareSheet(!tkShareSheet.classList.contains('open'));
+        });
+    }
+    if (tkSheetBackdrop) tkSheetBackdrop.addEventListener('click', closeShareSheet);
+    if (tkShareSheet) tkShareSheet.addEventListener('click', (e) => e.stopPropagation());
+
+    function openSettingsViewFromSheet(view) {
+        closeShareSheet();
+        openSettingsMenu(true, view);
+    }
+
+    const stopProp = (fn) => (e) => { e.stopPropagation(); fn(); };
+    if (tkSheetOpenSubtitles) tkSheetOpenSubtitles.addEventListener('click', stopProp(() => openSettingsViewFromSheet(settingsSubtitlesMenu)));
+    if (tkSheetOpenSleep) tkSheetOpenSleep.addEventListener('click', stopProp(() => openSettingsViewFromSheet(settingsSleepView)));
+    if (tkSheetOpenSpeed) tkSheetOpenSpeed.addEventListener('click', stopProp(() => openSettingsViewFromSheet(settingsSpeed)));
+    if (tkSheetOpenQuality) tkSheetOpenQuality.addEventListener('click', stopProp(() => openSettingsViewFromSheet(settingsQuality)));
+    if (tkStudioLight) tkStudioLight.addEventListener('click', (e) => e.stopPropagation());
+    if (tkLoopSheetBtn) tkLoopSheetBtn.addEventListener('click', (e) => e.stopPropagation());
+    if (tkStudioLight) {
+        tkStudioLight.addEventListener('click', () => {
+            studioLight = !studioLight;
+            storageSet('wmv_studio_light', studioLight ? '1' : '0');
+            applyStudioLight();
+        });
+    }
+    if (tkLoopSheetBtn) tkLoopSheetBtn.addEventListener('click', () => toggleLoop());
+
+    // TikTok volume slider — same level as the main one
+    if (tkVolumeSlider) {
+        tkVolumeSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value) / 100;
+            if (val > 0) isMuted = false;
+            setVolume(val);
+        });
+    }
+
+    // =========================================================
+    //  Autoplay toggle (bottom-right, left of Субтитры)
+    // =========================================================
+    function paintAutoplay() {
+        if (btnAutoplay) btnAutoplay.setAttribute('aria-pressed', String(autoplayOn));
+    }
+
+    if (btnAutoplay) {
+        btnAutoplay.addEventListener('click', () => {
+            autoplayOn = !autoplayOn;
+            storageSet('wmv_autoplay', autoplayOn ? '1' : '0');
+            paintAutoplay();
+            showToast(autoplayOn ? 'Автовоспроизведение включено' : 'Автовоспроизведение выключено', 1600);
+        });
+    }
+
+    // =========================================================
+    //  Скриншот — save the current frame (or the cover for audio)
+    // =========================================================
+    if (btnScreenshot) {
+        btnScreenshot.addEventListener('click', () => {
+            if (!currentVideoKey) {
+                showToast('Сначала откройте видео');
+                return;
+            }
+            try {
+                const c = document.createElement('canvas');
+                if (currentIsAudio && audioCover && audioCover.currentSrc) {
+                    const img = audioCover;
+                    c.width = img.naturalWidth || 512;
+                    c.height = img.naturalHeight || 512;
+                    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+                } else {
+                    const srcEl = qualityProxyOn ? qualityCanvas : video;
+                    const w = srcEl.videoWidth || srcEl.width;
+                    const h = srcEl.videoHeight || srcEl.height;
+                    if (!w || !h) {
+                        showToast('Кадр ещё не готов');
+                        return;
+                    }
+                    c.width = w;
+                    c.height = h;
+                    c.getContext('2d').drawImage(srcEl, 0, 0, w, h);
+                }
+                const a = document.createElement('a');
+                const t = formatTime(video.currentTime || 0).replace(/[:.]/g, '-');
+                a.download = `${stripExtension(currentFileName) || 'screenshot'}-${t}.png`;
+                a.href = c.toDataURL('image/png');
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                showToast('Снимок сохранён');
+            } catch (_) {
+                showToast('Не удалось сохранить снимок');
+            }
+        });
+    }
+
+    // =========================================================
+    //  Seek preview — mini-frame above the time while scrubbing
+    // =========================================================
+    const seekPreviewCheckbox = $('seek-preview-checkbox');
+
+    function drawSeekPreview() {
+        if (!seekPreviewEnabled || !seekPreviewCanvas) return;
+        if (currentIsAudio) return;
+        const sw = video.videoWidth, sh = video.videoHeight;
+        if (!sw || !sh) return;
+        const ctx = seekPreviewCanvas.getContext('2d');
+        const cw = seekPreviewCanvas.width, ch = seekPreviewCanvas.height;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, cw, ch);
+        const scale = Math.min(cw / sw, ch / sh);
+        const dw = Math.max(2, Math.round(sw * scale));
+        const dh = Math.max(2, Math.round(sh * scale));
+        ctx.drawImage(video, Math.round((cw - dw) / 2), Math.round((ch - dh) / 2), dw, dh);
+    }
+
+    function positionSeekPreview(ratio) {
+        if (!seekPreview) return;
+        const rect = progressContainer.getBoundingClientRect();
+        const halfW = 84; // half of the 168px preview frame
+        const x = Math.max(halfW + 2, Math.min(rect.width - halfW - 2, ratio * rect.width));
+        seekPreview.style.left = x + 'px';
+    }
+
+    function showSeekPreview(ratio) {
+        if (!seekPreviewEnabled || !seekPreview) return;
+        positionSeekPreview(ratio);
+        drawSeekPreview();
+        seekPreview.classList.remove('hidden');
+    }
+
+    function hideSeekPreview() {
+        if (seekPreview) seekPreview.classList.add('hidden');
+    }
+
+    video.addEventListener('seeked', () => {
+        if (isDraggingProgress) drawSeekPreview();
+    });
+
+    if (seekPreviewCheckbox) {
+        seekPreviewCheckbox.checked = seekPreviewEnabled;
+        seekPreviewCheckbox.addEventListener('change', (e) => {
+            seekPreviewEnabled = e.target.checked;
+            storageSet('wmv_seek_preview', seekPreviewEnabled ? '1' : '0');
+            if (!seekPreviewEnabled) hideSeekPreview();
+            showToast(seekPreviewEnabled ? 'Мини-кадр при перемотке включён' : 'Мини-кадр при перемотке выключен', 1500);
+        });
+    }
 
     // =========================================================
     //  Quality — the site synthesizes low tiers itself (canvas downscale); the
@@ -1417,12 +2060,160 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         const active = availableQualities.find((q) => q.key === currentQualityKey) || availableQualities[0];
         setChevronValue(currentQualityLabel, active ? active.label : 'Исходное');
+        updateQualityBadge(active ? active.height : 0);
     }
 
-    function drawQualityFrame() {
+    // Gear badge — HD for 1080, 2K for 1440, 4K for 2160, none below 1080
+    function updateQualityBadge(rungHeight) {
+        if (!settingsQualityBadge) return;
+        const h = Number(rungHeight) || 0;
+        let text = '';
+        if (h >= 2160) text = '4K';
+        else if (h >= 1440) text = '2K';
+        else if (h >= 1080) text = 'HD';
+        settingsQualityBadge.textContent = text;
+        settingsQualityBadge.classList.toggle('hidden', !text);
+    }
+
+    // =========================================================
+    //  GPU enhancement — the upscale tiers run a real unsharp
+    //  mask + filmic contrast/saturation on the GPU, so the picture
+    //  genuinely looks sharper (never just a blurry enlargement)
+    // =========================================================
+    let glCtx = null;
+    let glProgram = null;
+    let glTex = null;
+    let glLocations = null;
+    let glUsable = null;
+
+    function ensureEnhanceGL() {
+        if (glUsable !== null) return glUsable;
+        const gl = qualityCanvas.getContext('webgl', {
+            alpha: false, antialias: false, depth: false, stencil: false,
+            preserveDrawingBuffer: false, powerPreference: 'high-performance'
+        });
+        if (!gl) { glUsable = false; return false; }
+        const vsSource = 'attribute vec2 aPos; varying vec2 vUv; void main() { vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }';
+        const fsSource = `precision highp float;
+uniform sampler2D uTex;
+uniform vec2 uTexel;
+uniform float uSharp;
+uniform float uContrast;
+uniform float uSat;
+uniform float uWarm;
+varying vec2 vUv;
+void main() {
+    vec3 c = texture2D(uTex, vUv).rgb;
+    vec3 avg = (
+        texture2D(uTex, vUv + vec2(0.0, uTexel.y)).rgb +
+        texture2D(uTex, vUv - vec2(0.0, uTexel.y)).rgb +
+        texture2D(uTex, vUv + vec2(uTexel.x, 0.0)).rgb +
+        texture2D(uTex, vUv - vec2(uTexel.x, 0.0)).rgb
+    ) * 0.25;
+    vec3 sharp = clamp(c + (c - avg) * uSharp, 0.0, 1.0);
+    sharp = clamp((sharp - 0.5) * uContrast + 0.5, 0.0, 1.0);
+    float luma = dot(sharp, vec3(0.2126, 0.7152, 0.0722));
+    sharp = clamp(mix(vec3(luma), sharp, uSat), 0.0, 1.0);
+    sharp.r = clamp(sharp.r * (1.0 + uWarm * 0.05), 0.0, 1.0);
+    sharp.b = clamp(sharp.b * (1.0 - uWarm * 0.045), 0.0, 1.0);
+    gl_FragColor = vec4(sharp, 1.0);
+}`;
+        const compile = (type, source) => {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.warn('Enhance shader failed:', gl.getShaderInfoLog(shader));
+                return null;
+            }
+            return shader;
+        };
+        const vs = compile(gl.VERTEX_SHADER, vsSource);
+        const fs = compile(gl.FRAGMENT_SHADER, fsSource);
+        if (!vs || !fs) { glUsable = false; return false; }
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.warn('Enhance program failed:', gl.getProgramInfoLog(program));
+            glUsable = false;
+            return false;
+        }
+        gl.useProgram(program);
+        const buf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+        const aPos = gl.getAttribLocation(program, 'aPos');
+        gl.enableVertexAttribArray(aPos);
+        gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+        glTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, glTex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        glLocations = {
+            uTexel: gl.getUniformLocation(program, 'uTexel'),
+            uSharp: gl.getUniformLocation(program, 'uSharp'),
+            uContrast: gl.getUniformLocation(program, 'uContrast'),
+            uSat: gl.getUniformLocation(program, 'uSat'),
+            uWarm: gl.getUniformLocation(program, 'uWarm'),
+        };
+        glCtx = gl;
+        glProgram = program;
+        glUsable = true;
+        return true;
+    }
+
+    // 2K/4K get a strong-but-sane enhancement; downscale is a clean resample
+    function enhanceParamsForHeight(height) {
+        if (height >= 2160) return { sharp: 0.85, contrast: 1.13, sat: 1.07, warm: 0.6 };
+        if (height >= 1440) return { sharp: 0.65, contrast: 1.10, sat: 1.06, warm: 0.5 };
+        return { sharp: 0, contrast: 1, sat: 1, warm: 0 };
+    }
+
+    function drawQualityFrameGL() {
+        const gl = glCtx;
+        qualityCanvas.style.filter = 'none';
+        gl.useProgram(glProgram);
+        gl.bindTexture(gl.TEXTURE_2D, glTex);
+        try {
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+        } catch (_) {
+            return; // frame not decodable yet
+        }
+        gl.viewport(0, 0, qualityCanvas.width, qualityCanvas.height);
+        const p = enhanceParamsForHeight(Math.min(qualityCanvas.width, qualityCanvas.height));
+        // Sample the LINEARLY upscaled texture in OUTPUT space — this is the
+        // correct place to do an unsharp mask (blur = average of interpolated neighbours)
+        gl.uniform2f(glLocations.uTexel, 1 / Math.max(2, qualityCanvas.width), 1 / Math.max(2, qualityCanvas.height));
+        gl.uniform1f(glLocations.uSharp, p.sharp);
+        gl.uniform1f(glLocations.uContrast, p.contrast);
+        gl.uniform1f(glLocations.uSat, p.sat);
+        gl.uniform1f(glLocations.uWarm, p.warm);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    function drawQualityFrame2d() {
+        if (!qualityCtx) qualityCtx = qualityCanvas.getContext('2d', { alpha: false });
+        if (!qualityCtx) return;
         qualityCtx.imageSmoothingEnabled = true;
         qualityCtx.imageSmoothingQuality = 'high';
         qualityCtx.drawImage(video, 0, 0, qualityCanvas.width, qualityCanvas.height);
+        // No WebGL — lean on the browser's SVG convolution for a real sharpen
+        const p = enhanceParamsForHeight(Math.min(qualityCanvas.width, qualityCanvas.height));
+        qualityCanvas.style.filter = p.sharp > 0
+            ? `url(#${p.sharp >= 0.75 ? 'svg-sharpen-strong' : 'svg-sharpen'}) contrast(${p.contrast}) saturate(${p.sat})`
+            : 'none';
+    }
+
+    let qualityCanvasHeight = 0;
+
+    function drawQualityFrame() {
+        if (ensureEnhanceGL()) drawQualityFrameGL();
+        else drawQualityFrame2d();
     }
 
     function startQualityProxy(height) {
@@ -1432,6 +2223,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const scale = height / minDim;
         qualityCanvas.width = Math.max(2, Math.round(video.videoWidth * scale));
         qualityCanvas.height = Math.max(2, Math.round(video.videoHeight * scale));
+        qualityCanvasHeight = height;
         qualityProxyOn = true;
         qualityCanvas.classList.add('active');
         video.classList.add('video-proxied');
@@ -1581,7 +2373,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const offOption = document.createElement('div');
         offOption.className = 'settings-option' + (currentSubtitleTrackId === 'off' ? ' active' : '');
         offOption.setAttribute('data-sub', 'off');
-        offOption.textContent = 'Выключены';
+        offOption.textContent = 'Выкл.';
         subtitlesOptionsList.appendChild(offOption);
 
         subtitleTracks.forEach((track) => {
@@ -1593,7 +2385,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (currentSubtitleTrackId === 'off') {
-            setChevronValue(currentSubLabel, 'Выключены');
+            setChevronValue(currentSubLabel, 'Выкл.');
             ccIndicator.classList.remove('active');
         } else {
             const activeTrack = subtitleTracks.find((t) => t.id === currentSubtitleTrackId);
@@ -1662,10 +2454,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function paintVolumeSlider(percent) {
+        const p = Math.max(0, Math.min(100, Math.round(percent)));
+        volumeSlider.value = String(p);
+        volumeSlider.style.setProperty('--fill', p + '%');
+        if (tkVolumeSlider) {
+            tkVolumeSlider.value = String(p);
+            tkVolumeSlider.style.setProperty('--fill', p + '%');
+        }
+        if (tkVolumeValue) tkVolumeValue.textContent = p + '%';
+    }
+
     function setVolume(vol) {
         const clamped = Math.max(0, Math.min(1, vol));
         video.volume = clamped;
-        volumeSlider.value = String(Math.round(clamped * 100));
+        paintVolumeSlider(clamped * 100);
         isMuted = clamped === 0;
         if (clamped > 0 && audioCtx) resumeAudioContext();
         updateVolumeIcon(clamped);
@@ -1685,7 +2488,7 @@ document.addEventListener('DOMContentLoaded', () => {
             volumeBeforeMute = video.volume;
             isMuted = true;
             video.volume = 0;
-            volumeSlider.value = '0';
+            paintVolumeSlider(0);
             updateVolumeIcon(0);
         }
     });
@@ -1731,7 +2534,9 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.toggle('theater-mode', on);
         btnTheater.classList.toggle('active', on);
         btnTheater.setAttribute('aria-pressed', on ? 'true' : 'false');
-        btnTheater.title = on ? 'Обычный режим (T)' : 'Режим кинотеатра (T)';
+        const label = on ? 'Режим просмотра по умолчанию (t)' : 'Широкий экран (t)';
+        btnTheater.setAttribute('data-tooltip', label);
+        btnTheater.setAttribute('aria-label', label);
     }
 
     function resetTheater() {
@@ -1761,19 +2566,24 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('fullscreenchange', () => {
         const isFullscreen = !!document.fullscreenElement;
         fullscreenIcon.className = isFullscreen ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
-        btnFullscreen.title = isFullscreen ? 'Выйти из полноэкранного режима (F)' : 'На весь экран (F)';
+        const fsLabel = isFullscreen ? 'Выйти из полноэкранного режима (f)' : 'На весь экран (f)';
+        btnFullscreen.setAttribute('data-tooltip', fsLabel);
+        btnFullscreen.setAttribute('aria-label', fsLabel);
     });
 
     // =========================================================
     //  Settings menu
     // =========================================================
-    function openSettingsMenu(open) {
+    const settingsGearIcon = $('settings-gear-icon');
+
+    function openSettingsMenu(open, view) {
         settingsMenu.classList.toggle('hidden', !open);
         btnSettings.classList.toggle('active', open);
+        if (settingsGearIcon) settingsGearIcon.classList.toggle('gear-open', open);
         if (open) {
             clearTimeout(idleTimer);
             document.body.classList.remove('idle');
-            switchSettingsView(settingsMain);
+            switchSettingsView(view || settingsMain);
         } else {
             scheduleIdle();
         }
@@ -1803,6 +2613,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (action === 'speed') switchSettingsView(settingsSpeed);
             else if (action === 'quality') switchSettingsView(settingsQuality);
             else if (action === 'subtitles-menu') switchSettingsView(settingsSubtitlesMenu);
+            else if (action === 'sleep') {
+                renderSleepOptions();
+                paintSleepLabel();
+                switchSettingsView(settingsSleepView);
+            }
         });
         item.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
@@ -1832,13 +2647,32 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isTypingTarget(document.activeElement)) return;
 
         const code = e.code;
-        const key = e.key;
+        const key = (e.key || '').toLowerCase();
+        // Russian (ЙЦУКЕН) layout — e.code is already layout-independent, so map
+        // the physical letters by e.key as a fallback for non-standard layouts.
+        const RU_TO_CODE = {
+            'е': 'KeyT',  // Т → theater
+            'л': 'KeyK',  // К → play/pause
+            'а': 'KeyF',  // Ф → fullscreen
+            'ь': 'KeyM',  // Ь → mute
+            'с': 'KeyC',  // С → subtitles
+            'о': 'KeyJ',  // О → back 10
+            'д': 'KeyL',  // Д → forward 10
+            'б': 'Comma', // Б → prev frame
+            'ю': 'Period',// Ю → next frame
+        };
+        const effective = RU_TO_CODE[key] || code;
 
         pokeUI();
 
         if (code === 'Escape') {
             if (document.body.classList.contains('tk-drawer-open')) {
                 closeCommentsDrawer();
+                e.preventDefault();
+                return;
+            }
+            if (tkShareSheet && tkShareSheet.classList.contains('open')) {
+                closeShareSheet();
                 e.preventDefault();
                 return;
             }
@@ -1849,7 +2683,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        switch (code) {
+        switch (effective) {
             case 'Space':
             case 'KeyK':
                 e.preventDefault();
@@ -1872,10 +2706,6 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'KeyC':
                 e.preventDefault();
                 btnSubtitles.click();
-                return;
-            case 'KeyP':
-                e.preventDefault();
-                btnPip.click();
                 return;
             case 'KeyJ':
                 e.preventDefault();
@@ -1932,6 +2762,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     //  Init
     // =========================================================
+    paintVolumeSlider((video.volume || 1) * 100);
+    paintAutoplay();
+    applyStudioLight();
+    paintSleepLabel();
+    renderSleepOptions();
+
     setMode(storageGet(MODE_KEY, 'youtube'), { persist: false });
     updateQualityUI();
     updateSubtitlesMenu();
