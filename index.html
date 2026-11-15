@@ -136,7 +136,7 @@
                                         <div class="tk-desc" id="tk-desc">Описание видео</div>
                                         <div class="tk-music">
                                             <i class="fa-solid fa-music"></i>
-                                            <div class="tk-music-marquee"><span id="tk-music-text">оригинальный звук</span></div>
+                                            <div class="tk-music-marquee"><span id="tk-music-text">оригинальный звук&#160;&#160;&#160;•&#160;&#160;&#160;оригинальный звук&#160;&#160;&#160;•&#160;&#160;&#160;</span></div>
                                         </div>
                                     </div>
 
@@ -190,7 +190,7 @@
                                             <i class="fa-solid fa-closed-captioning"></i>
                                             <span class="cc-indicator" id="cc-indicator"></span>
                                         </button>
-                                        <button id="btn-settings" class="control-btn" type="button" aria-label="Настройки" aria-haspopup="menu">
+                                        <button id="btn-settings" class="control-btn" type="button" aria-label="Настройки" aria-haspopup="menu" data-tooltip="Настройки">
                                             <i class="fa-solid fa-gear" id="settings-gear-icon"></i>
                                             <span class="settings-quality-badge hidden" id="settings-quality-badge">HD</span>
                                         </button>
@@ -294,8 +294,23 @@
 
                             <!-- TikTok share-style sheet: all YouTube settings, in a row -->
                             <div class="tk-sheet-backdrop" id="tk-sheet-backdrop" aria-hidden="true"></div>
-                            <div class="tk-share-sheet" id="tk-share-sheet" role="dialog" aria-modal="true" aria-label="Настройки и функции" aria-hidden="true">
+                            <div class="tk-share-sheet" id="tk-share-sheet" role="dialog" aria-modal="true" aria-label="Поделиться и настройки" aria-hidden="true">
                                 <div class="tk-sheet-handle" aria-hidden="true"></div>
+                                <div class="tk-sheet-row" id="tk-sheet-share">
+                                    <button class="tk-sheet-item" id="tk-share-system" type="button">
+                                        <span class="tk-sheet-circle"><i class="fa-solid fa-share"></i></span>
+                                        <span class="tk-sheet-label">Поделиться</span>
+                                    </button>
+                                    <button class="tk-sheet-item" id="tk-share-download" type="button">
+                                        <span class="tk-sheet-circle"><i class="fa-solid fa-download"></i></span>
+                                        <span class="tk-sheet-label">Скачать</span>
+                                    </button>
+                                    <button class="tk-sheet-item" id="tk-share-copy" type="button">
+                                        <span class="tk-sheet-circle"><i class="fa-solid fa-copy"></i></span>
+                                        <span class="tk-sheet-label">Копировать</span>
+                                    </button>
+                                </div>
+                                <div class="tk-sheet-divider" aria-hidden="true"></div>
                                 <div class="tk-sheet-row" id="tk-sheet-settings">
                                     <button class="tk-sheet-item" id="tk-studio-light" type="button" aria-pressed="false">
                                         <span class="tk-sheet-circle"><i class="fa-solid fa-sun"></i></span>

@@ -178,9 +178,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let gainNode = null;
 
     // Quality management — the site renders low tiers itself via a canvas
-    const QUALITY_RUNGS = [144, 240, 360, 480, 720, 1080, 1440, 2160]; // label rungs (px, short side)
     const QUALITY_ARTIFICIAL_DOWN = [144, 240, 360, 480, 720, 1080, 1440]; // below-source rungs we synthesize
-    const QUALITY_ARTIFICIAL_UP = [1440, 2160];                            // upscale tiers offered when missing
+    const QUALITY_ARTIFICIAL_UP = [720, 1080, 1440, 2160];                 // upscale tiers offered when missing
     let availableQualities = [{ key: 'original', label: '0', height: 0, original: true }];
     let currentQualityKey = 'original';
     let qualityProxyOn = false;
@@ -350,7 +349,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         idleTimer = setTimeout(() => {
-            if (!isOverlayOpen() && !isDraggingProgress) {
+            if (!isOverlayOpen() && !isDraggingProgress && !video.paused && !video.ended) {
                 document.body.classList.add('idle');
             }
         }, IDLE_DELAY_MS);
@@ -374,10 +373,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     playerWrapper.addEventListener('mouseenter', () => pokeUI());
     playerWrapper.addEventListener('mouseleave', () => {
-        // Cursor left the player area — hide the chrome right away.
+        // Cursor left the player area — hide the chrome right away,
+        // but only while the video is actually playing.
         clearIdle();
         closeSettingsMenuIfOpen();
-        document.body.classList.add('idle');
+        if (!video.paused && !video.ended) {
+            document.body.classList.add('idle');
+        }
     });
     ['mousemove', 'wheel'].forEach((evt) => {
         document.addEventListener(evt, pokeUI, { passive: true });
@@ -793,7 +795,9 @@ document.addEventListener('DOMContentLoaded', () => {
         tkAvatar.textContent = (handle[0] || 'W').toUpperCase();
         tkAuthor.textContent = '@' + handle;
         tkDesc.textContent = displayName;
-        tkMusicText.textContent = `оригинальный звук — ${tkAuthor.textContent}`;
+        const musicLine = `оригинальный звук — ${tkAuthor.textContent}`;
+        const musicSep = '\u00A0\u00A0\u00A0•\u00A0\u00A0\u00A0';
+        tkMusicText.textContent = musicLine + musicSep + musicLine + musicSep;
     }
 
     function buildDescription() {
@@ -972,32 +976,55 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast(next ? 'Вы подписались' : 'Вы отписались');
     }
 
-    // Share / Download — deliberately inert stubs that look like the real
-    // thing («Сохранить» keeps working as before).
-    function shareStub() {
+    // Share / Download — real behaviour, no fake toasts.
+    function shareCurrentVideo() {
+        const title = stripExtension(currentFileName) || currentFileName || 'WatchMyVideo';
         try {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(window.location.href).catch(() => {});
+            if (navigator.share) {
+                navigator.share({ title, text: title }).catch((err) => {
+                    // AbortError = user closed the share UI — not an error.
+                    if (err && err.name !== 'AbortError') copyFallback(title);
+                });
+                return;
             }
-        } catch (_) { /* clipboard unavailable — the toast still confirms */ }
-        showToast('Ссылка скопирована');
+        } catch (_) { /* fall through to clipboard */ }
+        copyFallback(title);
     }
 
-    function downloadStub() {
-        showToast('Скачивание начнётся…', 1600);
-        setTimeout(() => showToast('Загрузка завершена', 1800), 1700);
+    function copyFallback(text) {
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(
+                    () => showToast('Название скопировано в буфер обмена'),
+                    () => showToast('Не удалось скопировать')
+                );
+                return;
+            }
+        } catch (_) { /* clipboard blocked — fall through */ }
+        showToast('Поделиться не удалось');
+    }
+
+    function downloadCurrentVideo() {
+        if (!currentFileUrl) { showToast('Сначала откройте видео'); return; }
+        const a = document.createElement('a');
+        a.href = currentFileUrl;
+        a.download = currentFileName || 'video';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        showToast('Скачивание началось');
     }
 
     btnLike.addEventListener('click', toggleLike);
     btnDislike.addEventListener('click', toggleDislike);
     tkLike.addEventListener('click', toggleLike);
-    btnShareYt.addEventListener('click', shareStub);
+    btnShareYt.addEventListener('click', shareCurrentVideo);
     btnSave.addEventListener('click', toggleSave);
     tkSave.addEventListener('click', toggleSave);
     btnSubscribe.addEventListener('click', toggleSubscribe);
     tkFollow.addEventListener('click', toggleSubscribe);
 
-    btnDownload.addEventListener('click', downloadStub);
+    btnDownload.addEventListener('click', downloadCurrentVideo);
 
     // =========================================================
     //  Comments (YouTube section + TikTok drawer, shared storage)
@@ -1251,6 +1278,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     video.addEventListener('play', () => {
         startFpsSampler();
+        scheduleIdle();
         playerWrapper.classList.remove('video-ended');
         updatePlayPauseButton(true);
         replayOverlay.classList.add('hidden');
@@ -1259,6 +1287,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     video.addEventListener('pause', () => {
         updatePlayPauseButton(false);
+        // Keep the chrome visible while paused (YouTube behaviour)
+        document.body.classList.remove('idle');
         if (!video.ended) flashCenterIcon('fa-solid fa-pause');
     });
 
@@ -1272,6 +1302,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (autoplayOn) video.play().catch(() => {});
             return;
         }
+        document.body.classList.remove('idle');
         if (!video.loop) {
             playerWrapper.classList.add('video-ended');
             replayOverlay.classList.remove('hidden');
@@ -2000,6 +2031,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (tkSheetOpenSleep) tkSheetOpenSleep.addEventListener('click', stopProp(() => openSettingsViewFromSheet(settingsSleepView)));
     if (tkSheetOpenSpeed) tkSheetOpenSpeed.addEventListener('click', stopProp(() => openSettingsViewFromSheet(settingsSpeed)));
     if (tkSheetOpenQuality) tkSheetOpenQuality.addEventListener('click', stopProp(() => openSettingsViewFromSheet(settingsQuality)));
+    const tkSheetShareSystem = $('tk-share-system');
+    const tkSheetShareDownload = $('tk-share-download');
+    const tkSheetShareCopy = $('tk-share-copy');
+    const sheetAction = (fn) => stopProp(() => { openShareSheet(false); fn(); });
+    if (tkSheetShareSystem) tkSheetShareSystem.addEventListener('click', sheetAction(shareCurrentVideo));
+    if (tkSheetShareDownload) tkSheetShareDownload.addEventListener('click', sheetAction(downloadCurrentVideo));
+    if (tkSheetShareCopy) tkSheetShareCopy.addEventListener('click', sheetAction(() => copyFallback(stripExtension(currentFileName) || currentFileName || 'WatchMyVideo')));
     if (tkStudioLight) tkStudioLight.addEventListener('click', (e) => e.stopPropagation());
     if (tkLoopSheetBtn) tkLoopSheetBtn.addEventListener('click', (e) => e.stopPropagation());
     if (tkStudioLight) {
@@ -2185,7 +2223,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let fpsSampling = false;
 
     function qualityLabel(height) {
-        return knownFps ? `${height}p${knownFps}` : `${height}p`;
+        const h = Number(height) || 0;
+        if (!h) return 'Авто';
+        return knownFps ? `${h}p${knownFps}` : `${h}p`;
     }
 
     function resetFpsSampler() {
@@ -2224,14 +2264,6 @@ document.addEventListener('DOMContentLoaded', () => {
         video.requestVideoFrameCallback(step);
     }
 
-    function masterTierFor(minDim) {
-        let best = null;
-        for (const t of QUALITY_RUNGS) {
-            if (minDim * 1.05 >= t) best = t;
-        }
-        return best || Math.max(2, Math.floor(minDim));
-    }
-
     function computeQualities() {
         stopQualityProxy();
         const vw = video.videoWidth || 0;
@@ -2242,7 +2274,9 @@ document.addEventListener('DOMContentLoaded', () => {
             currentQualityKey = 'original';
             return;
         }
-        const orig = masterTierFor(minDim);
+        // The original tier keeps the true source line count — never snap a
+        // 540-line video down to the 480 rung: the user must see honest numbers.
+        const orig = Math.max(2, Math.round(minDim));
         const list = [{ key: 'original', label: String(orig), height: orig, original: true }];
         const seen = new Set(['original']);
         // Rungs below the source (downscale).

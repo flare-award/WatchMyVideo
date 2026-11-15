@@ -127,9 +127,8 @@ button {
     transition: opacity 0.28s ease;
 }
 
-/* Плеер & TikTok: the same header, fixed & feathered over the edge-to-edge video */
-body.mode-player .app-header,
-body.mode-tiktok .app-header {
+/* Плеер mode: the header floats, feathered over the edge-to-edge video */
+body.mode-player.video-active .app-header {
     position: fixed;
     left: 0;
     right: 0;
@@ -138,8 +137,7 @@ body.mode-tiktok .app-header {
     border-bottom: none;
 }
 
-body.idle.mode-player .app-header,
-body.idle.mode-tiktok .app-header {
+body.idle.mode-player.video-active .app-header {
     opacity: 0;
     pointer-events: none;
 }
@@ -468,9 +466,13 @@ body.video-active .close-video-top {
     min-height: calc(100vh - var(--header-height));
 }
 
-body.mode-player .welcome-screen,
-body.mode-tiktok .welcome-screen {
+body.mode-player .welcome-screen {
     min-height: 100vh;
+    background: #000;
+}
+
+body.mode-tiktok .welcome-screen {
+    min-height: calc(100vh - var(--header-height));
     background: #000;
 }
 
@@ -673,9 +675,10 @@ body.mode-tiktok .app-container {
     height: 100vh;
 }
 
+/* TikTok mode keeps the normal solid header; the video area fills the rest */
 body.mode-tiktok .main-content {
     position: fixed;
-    inset: 0;
+    inset: var(--header-height) 0 0 0;
     background: #000;
     z-index: 1;
     display: flex;
@@ -695,7 +698,9 @@ body.mode-tiktok .player-column {
 
 body.mode-tiktok .player-wrapper {
     height: 100%;
-    aspect-ratio: 9 / 16;
+    /* Follow the video's own aspect ratio (vertical stays phone-frame,
+       horizontal fills the width instead of shrinking to a postage stamp) */
+    aspect-ratio: var(--video-ar, 9 / 16);
     width: auto;
     max-width: 100vw;
     border-radius: 0;
@@ -707,7 +712,7 @@ body.mode-tiktok .player-wrapper {
     body.mode-tiktok .player-wrapper {
         width: 100vw;
         height: auto;
-        aspect-ratio: 9 / 16;
+        aspect-ratio: var(--video-ar, 9 / 16);
     }
 }
 
@@ -2367,13 +2372,16 @@ input:checked + .slider-toggle:before {
 
 .tk-music-marquee span {
     display: inline-block;
-    padding-left: 100%;
-    animation: tk-marquee 9s linear infinite;
+    white-space: nowrap;
+    will-change: transform;
+    animation: tk-marquee 12s linear infinite;
 }
 
+/* Content is duplicated twice in the markup/JS, so shifting by exactly half
+   loops seamlessly — no gaps, no jump-cut. */
 @keyframes tk-marquee {
-    0%   { transform: translateX(0); }
-    100% { transform: translateX(-100%); }
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
 }
 
 /* Spinning record disc pinned under the rail, like TikTok */
@@ -2385,9 +2393,10 @@ input:checked + .slider-toggle:before {
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
+    transition: opacity 0.25s ease;
     background:
         radial-gradient(circle at center, #2b2b2b 0 26%, #111 27% 44%, #1d1d1d 45% 52%, #000 53% 100%);
     border: 2px solid rgba(255, 255, 255, 0.25);
@@ -2894,6 +2903,17 @@ body.mode-tiktok .tk-rail {
 
 body.mode-tiktok .tk-info {
     display: block;
+}
+
+body.mode-tiktok .tk-disc {
+    display: flex;
+}
+
+/* Idle / open sheet: fade the disc together with the rail */
+body.idle .tk-disc,
+.player-wrapper.tk-sheet-open .tk-disc {
+    opacity: 0;
+    pointer-events: none;
 }
 
 /* ============================================================
