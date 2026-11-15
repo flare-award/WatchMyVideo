@@ -616,11 +616,14 @@ body.mode-youtube .player-wrapper {
     max-height: calc(100vh - var(--header-height) - 32px);
 }
 
-/* YouTube theater: video as wide as the screen, height follows */
+/* YouTube theater: full width, height = 100vh − masthead − metadata strip,
+   video letterboxed & centered inside the black pane (≈ YouTube's 100vh − 169px) */
 body.theater-mode.mode-youtube .player-wrapper {
     width: 100%;
+    aspect-ratio: auto;
+    height: calc(100vh - var(--header-height) - 112px);
+    min-height: 240px;
     max-height: none;
-    aspect-ratio: 16 / 9;
     border-radius: 0;
 }
 
@@ -1442,17 +1445,28 @@ input:checked + .slider-toggle:before {
 }
 
 .speed-scale {
-    display: flex;
-    justify-content: space-between;
-    margin: 6px 38px 0;
+    position: relative;
+    height: 1em;
+    margin: 6px 38px 0;          /* aligns with the slider track (28px button + 10px gap) */
     font-size: 0.66rem;
     color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
 }
 
+.speed-scale span {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+    white-space: nowrap;
+}
+
+.speed-scale span:first-child { left: 0; transform: translateX(0); }
+.speed-scale span:nth-child(2) { left: 42.86%; } /* exact position of 1x on a 0.25–2 range */
+.speed-scale span:last-child { left: 100%; transform: translateX(-100%); }
+
 .speed-presets {
     display: flex;
-    gap: 5px;
+    gap: 4px;
     flex-wrap: nowrap;              /* single row, like YouTube */
     margin-top: 12px;
     justify-content: space-between;
@@ -1463,9 +1477,9 @@ input:checked + .slider-toggle:before {
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.08);
     color: #e1e1e1;
-    padding: 7px 0;
+    padding: 7px 2px;
     flex: 1 1 0;
-    font-size: 0.8rem;
+    font-size: 0.72rem;
     font-weight: 500;
     cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;

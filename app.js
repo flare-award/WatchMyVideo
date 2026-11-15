@@ -456,6 +456,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function closeCurrentVideo() {
         video.pause();
         stopQualityProxy();
+        resetTheater();
         video.removeAttribute('src');
         video.load();
         currentVideoKey = null;
@@ -481,7 +482,7 @@ document.addEventListener('DOMContentLoaded', () => {
         loadingSpinner.classList.add('hidden');
         replayOverlay.classList.add('hidden');
 
-        document.body.classList.remove('idle', 'theater-mode');
+        document.body.classList.remove('idle');
         document.title = 'WatchMyVideo';
         welcomeScreen.classList.remove('hidden');
         appShell.classList.add('hidden');
@@ -1697,6 +1698,10 @@ document.addEventListener('DOMContentLoaded', () => {
         btnTheater.title = on ? 'Обычный режим (T)' : 'Режим кинотеатра (T)';
     }
 
+    function resetTheater() {
+        setTheater(false);
+    }
+
     btnTheater.addEventListener('click', () => setTheater(!isTheater));
 
     // =========================================================
@@ -1899,4 +1904,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderSuggestions();
     refreshSocialUI();
     renderComments();
+    // Signal a fully-initialized page (used by the watchdog banner in index.html)
+    window.__wmvReady = true;
+    try { clearTimeout(window.__wmvWatchdog); } catch (_) { /* ignore */ }
 });
