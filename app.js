@@ -382,6 +382,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         video.src = sourceUrl;
         video.load();
+        // Spec: load() resets playbackRate -> defaultPlaybackRate, so set both
+        video.defaultPlaybackRate = playbackSpeed;
         video.playbackRate = playbackSpeed;
         video.loop = isLooping;
 
@@ -1271,6 +1273,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function setPlaybackSpeed(speed) {
         playbackSpeed = clampSpeed(speed);
+        video.defaultPlaybackRate = playbackSpeed;
         video.playbackRate = playbackSpeed;
         setChevronValue(currentSpeedLabel, speedDisplayName(playbackSpeed));
         speedSlider.value = String(playbackSpeed);
