@@ -155,7 +155,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Quality management — the site renders low tiers itself via a canvas
     const QUALITY_RUNGS = [144, 240, 360, 480, 720, 1080, 1440, 2160]; // label rungs (px, short side)
-    const QUALITY_ARTIFICIAL = [144, 240, 360, 480, 720, 1080];        // rungs we can synthesize
+    const QUALITY_ARTIFICIAL_DOWN = [144, 240, 360, 480, 720, 1080, 1440]; // below-source rungs we synthesize
+    const QUALITY_ARTIFICIAL_UP = [1440, 2160];                            // upscale tiers offered when missing
     let availableQualities = [{ key: 'original', label: 'Исходное', height: 0, artificial: false }];
     let currentQualityKey = 'original';
     let qualityProxyOn = false;
@@ -1367,13 +1368,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const orig = masterTierFor(minDim);
         const list = [{ key: 'original', label: tierLabel(orig), height: orig, artificial: false }];
-        // Artificial rungs below the original, shown largest first.
-        for (let i = QUALITY_ARTIFICIAL.length - 1; i >= 0; i--) {
-            const t = QUALITY_ARTIFICIAL[i];
-            if (t < orig) {
+        const seen = new Set(['original']);
+        // Artificial rungs below the source (downscale).
+        for (const t of QUALITY_ARTIFICIAL_DOWN) {
+            if (t < orig && !seen.has(String(t))) {
                 list.push({ key: String(t), label: tierLabel(t), height: t, artificial: true });
+                seen.add(String(t));
             }
         }
+        // Artificial upscale tiers — offer the 2K/4K rungs even when the source
+        // is below them (canvas upscale; the source stays untouched).
+        for (const t of QUALITY_ARTIFICIAL_UP) {
+            if (t > orig && !seen.has(String(t))) {
+                list.push({ key: String(t), label: tierLabel(t), height: t, artificial: true });
+                seen.add(String(t));
+            }
+        }
+        // Display: largest first, original sits at its natural rung.
+        list.sort((a, b) => b.height - a.height);
         availableQualities = list;
         currentQualityKey = 'original';
     }
