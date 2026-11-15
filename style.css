@@ -124,11 +124,41 @@ button {
     background-color: rgba(15, 15, 15, 0.96);
     backdrop-filter: blur(12px);
     border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    transition: opacity 0.28s ease;
+}
+
+/* Плеер & TikTok: the same header, fixed & feathered over the edge-to-edge video */
+body.mode-player .app-header,
+body.mode-tiktok .app-header {
+    position: fixed;
+    left: 0;
+    right: 0;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0) 100%);
+    backdrop-filter: none;
+    border-bottom: none;
+}
+
+body.idle.mode-player .app-header,
+body.idle.mode-tiktok .app-header {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Logo & site name live only in the YouTube style. In player/TikTok the logo
+   block is hidden visually, but keeps its layout slot, so the search box and
+   the right-hand buttons never shift by a pixel */
+body.mode-player .header-left,
+body.mode-tiktok .header-left {
+    visibility: hidden;
 }
 
 .header-left, .header-center, .header-right {
     display: flex;
     align-items: center;
+}
+
+.header-right {
+    margin-left: auto;
 }
 
 .header-left {
@@ -280,31 +310,7 @@ button {
     color: #0f0f0f;
 }
 
-/* Ambient floating bar (player & tiktok modes) — same layout as the YouTube header */
-.ambient-bar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 80;
-    display: none;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 10px 16px;
-    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.72) 0%, transparent 100%);
-    opacity: 1;
-    transition: opacity 0.28s ease;
-}
-
-.ambient-right {
-    display: inline-flex;
-    align-items: center;
-    gap: 12px;
-    margin-left: auto;
-}
-
-/* The logo lockup is identical in both chromes */
+/* Logo lockup */
 .logo-mark {
     display: block;
     flex-shrink: 0;
@@ -374,17 +380,6 @@ body.video-active .close-video-top {
     display: inline-flex;
 }
 
-/* Idle state: hide ambient bar alongside the controls */
-body.idle .ambient-bar {
-    opacity: 0;
-    pointer-events: none;
-}
-
-body.mode-tiktok .ambient-bar {
-    justify-content: flex-end;
-    padding: 12px 14px;
-    background: transparent;
-}
 
 /* ============================================================
    Buttons
@@ -557,42 +552,35 @@ body.mode-tiktok .welcome-screen {
     z-index: 1;
 }
 
-/* Theater mode on the real YouTube page: edge to edge, sidebar below */
-body.theater-mode .yt-grid {
+/* Theater mode on the real YouTube page: player spans both columns,
+   everything else stays exactly where it is (same column, same sizes). */
+body.theater-mode.mode-youtube .yt-grid {
     max-width: none;
-    grid-template-columns: 1fr;
-    padding: 0 0 56px;
-    gap: 0;
+    grid-template-columns: minmax(0, 1fr) 400px;
+    padding: 0 24px 56px;
+    gap: 24px;
+}
+
+body.theater-mode.mode-youtube .player-column {
+    display: contents;
+}
+
+body.theater-mode.mode-youtube .player-wrapper {
+    grid-column: 1 / -1;
 }
 
 body.theater-mode .yt-info {
-    padding: 12px 24px 0;
-    max-width: var(--content-max);
-    margin: 0 auto;
+    padding: 12px 0 0;
+    max-width: none;
+    margin: 0;
     width: 100%;
 }
 
 body.theater-mode .yt-sidebar {
-    padding: 8px 24px 0;
-    max-width: var(--content-max);
-    margin: 0 auto;
+    padding: 12px 0 0;
+    max-width: none;
+    margin: 0;
     width: 100%;
-}
-
-body.theater-mode .yt-sidebar .suggest-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 20px 16px;
-}
-
-body.theater-mode .suggest-item {
-    flex-direction: column;
-}
-
-body.theater-mode .suggest-thumb {
-    width: 100%;
-    height: auto;
-    aspect-ratio: 16 / 9;
 }
 
 /* ============================================================
@@ -1020,18 +1008,19 @@ body.idle .player-wrapper {
     position: absolute;
     bottom: 12px;
     transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.75);
+    background: transparent;
     color: #fff;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 0.74rem;
+    padding: 0;
+    border: none;
+    font-size: 0.78rem;
     font-weight: 400;
     pointer-events: none;
     display: none;
     white-space: nowrap;
-    border: none;
     z-index: 7;
     font-variant-numeric: tabular-nums;
+    /* only a faint, very blurred halo — the time text "floats" over the picture */
+    text-shadow: 0 0 7px rgba(0, 0, 0, 0.16), 0 0 3px rgba(0, 0, 0, 0.18), 0 1px 6px rgba(0, 0, 0, 0.14);
 }
 
 /* Mini-frame preview shown above the scrubber time while seeking */
@@ -1064,7 +1053,8 @@ body.idle .player-wrapper {
 .custom-controls-overlay [data-tooltip]:focus-visible::after {
     content: attr(data-tooltip);
     position: absolute;
-    bottom: calc(100% + 12px);
+    /* above the whole control row — never over the seek bar */
+    bottom: calc(100% + 46px);
     left: 50%;
     transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.78);
@@ -1079,14 +1069,6 @@ body.idle .player-wrapper {
     pointer-events: none;
     z-index: 60;
     animation: tooltipIn 0.14s ease;
-}
-
-.controls-right > [data-tooltip]:last-child::after,
-.controls-right > [data-tooltip]:nth-last-child(2)::after,
-.controls-right > [data-tooltip]:nth-last-child(3)::after {
-    left: auto;
-    right: 0;
-    transform: none;
 }
 
 @keyframes tooltipIn {
@@ -1235,7 +1217,7 @@ body.idle .player-wrapper {
     font-variant-numeric: tabular-nums;
 }
 
-/* Gear badge — current quality tier sits on the gear, like YouTube's HD/2K/4K */
+/* Gear badge — current quality tier sits on the gear, like YouTube's HD/4K */
 .settings-quality-badge {
     position: absolute;
     top: 1px;
@@ -1258,16 +1240,13 @@ body.idle .player-wrapper {
 .autoplay-btn {
     display: inline-flex;
     align-items: center;
-    gap: 9px;
+    justify-content: center;
     height: 38px;
-    padding: 0 8px 0 10px;
+    padding: 0 6px;
     background: transparent;
     border: none;
-    color: #e8e8e8;
     cursor: pointer;
     border-radius: 6px;
-    font-size: 0.78rem;
-    font-weight: 400;
     flex-shrink: 0;
 }
 
@@ -1275,37 +1254,59 @@ body.idle .player-wrapper {
     background: transparent;
 }
 
+/*
+   Three identical gray stops, like one continuous gray line with a knob on it:
+     off → gray knob (left)  with a white pause glyph
+     on  → white knob (right) with a black play glyph
+   The track stays gray in both states.
+*/
 .autoplay-pill {
     position: relative;
-    width: 33px;
-    height: 17px;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.28);
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+    background: #5a5a5a;
     transition: background 0.2s ease;
     flex-shrink: 0;
 }
 
 .autoplay-thumb {
     position: absolute;
-    top: 2.5px;
-    left: 3px;
-    width: 12px;
-    height: 12px;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
     border-radius: 50%;
-    background: #fff;
-    transition: transform 0.2s ease;
+    background: #8f8f8f;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease, background 0.2s ease;
 }
 
-.autoplay-btn[aria-pressed="true"] .autoplay-pill {
-    background: var(--accent-color);
+.autoplay-thumb i {
+    font-size: 0.58rem;
+    line-height: 1;
+    color: #fff;
+    position: absolute;
+}
+
+.autoplay-icon-on {
+    display: none;
 }
 
 .autoplay-btn[aria-pressed="true"] .autoplay-thumb {
-    transform: translateX(15px);
+    transform: translateX(18px);
+    background: #fff;
 }
 
-.autoplay-text {
-    white-space: nowrap;
+.autoplay-btn[aria-pressed="true"] .autoplay-icon-off {
+    display: none;
+}
+
+.autoplay-btn[aria-pressed="true"] .autoplay-icon-on {
+    display: block;
+    color: #0f0f0f;
 }
 
 /* Audio files — centered square cover on black, like YouTube Music */
@@ -1323,6 +1324,9 @@ body.idle .player-wrapper {
     box-shadow: 0 18px 60px rgba(0, 0, 0, 0.8);
     z-index: 6;
     user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+    -webkit-touch-callout: none;
 }
 
 .player-wrapper.audio-mode #video-element {
@@ -1334,40 +1338,28 @@ body.idle .player-wrapper {
     display: none !important;
 }
 
-/* Ambient glow behind the video (Профессиональное освещение) */
-.ambient-glow {
-    position: absolute;
-    top: -13%;
-    bottom: -13%;
-    left: -11%;
-    right: -11%;
-    z-index: 0;
-    pointer-events: none;
-    opacity: 0;
-    background: radial-gradient(ellipse at center, var(--ambient-color, rgba(255,255,255,0.16)) 0%, transparent 70%);
-    filter: blur(56px);
-    transition: opacity 0.45s ease;
-}
-
 .player-wrapper {
     z-index: 1;
 }
 
-body.studio-light .yt-info,
-body.studio-light .yt-sidebar {
-    position: relative;
-    z-index: 1;
+/* Ambient («Профессиональное освещение»): a blurred cover-fit painting of the
+   video fills the letterbox area inside the player — exactly YouTube's trick */
+.ambient-canvas {
+    position: absolute;
+    inset: -12%;
+    width: 124%;
+    height: 124%;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0;
+    filter: blur(44px) saturate(1.2) brightness(0.82);
+    transition: opacity 0.45s ease;
 }
 
-body.studio-light .ambient-glow {
-    opacity: 0.95;
+body.studio-light .ambient-canvas {
+    opacity: 1;
 }
 
-/* Slightly filmic warmth on top of the regular video while the mode is on */
-body.studio-light .player-wrapper:not(.audio-mode) #video-element,
-body.studio-light .player-wrapper:not(.audio-mode) .quality-canvas {
-    filter: saturate(1.08) contrast(1.05) brightness(1.03);
-}
 
 /* Scrubbing: video dims while dragging, returns instantly-but-smoothly */
 .player-wrapper.scrubbing #video-element,
@@ -1426,7 +1418,7 @@ body.studio-light .player-wrapper.scrubbing .quality-canvas {
     backdrop-filter: blur(12px);
     border: none;
     border-radius: 12px;
-    width: 308px;
+    width: 352px;
     max-width: calc(100% - 32px);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65);
     z-index: 40;
@@ -1467,6 +1459,8 @@ body.studio-light .player-wrapper.scrubbing .quality-canvas {
     align-items: center;
     gap: 12px;
     min-width: 0;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .setting-label i {
@@ -2214,20 +2208,11 @@ input:checked + .slider-toggle:before {
     line-height: 1.5;
 }
 
-/* ============================================================
-   TikTok chrome (rail, author info, comments drawer)
-   ============================================================ */
-.tk-chrome {
-    position: fixed;
-    inset: 0;
-    z-index: 46;
-    pointer-events: none;
-}
 
 .tk-rail {
     position: absolute;
     right: 8px;
-    bottom: 88px;
+    bottom: 128px;
     display: none;
     flex-direction: column;
     align-items: center;
@@ -2273,7 +2258,13 @@ input:checked + .slider-toggle:before {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.2s;
+    transition: background 0.2s, opacity 0.18s ease, transform 0.18s ease;
+}
+
+.tk-follow.follow-hidden {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.55);
+    pointer-events: none;
 }
 
 .tk-follow.subscribed {
@@ -2293,11 +2284,10 @@ input:checked + .slider-toggle:before {
     padding: 0;
     line-height: 1;
     filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.9));
-    transition: transform 0.15s;
 }
 
 .tk-action:hover {
-    transform: scale(1.1);
+    transform: none;
 }
 
 .tk-action i {
@@ -2388,8 +2378,12 @@ input:checked + .slider-toggle:before {
 
 /* Spinning record disc pinned under the rail, like TikTok */
 .tk-disc {
-    width: 46px;
-    height: 46px;
+    position: absolute;
+    right: 10px;
+    bottom: 12px;
+    z-index: 22;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -2568,29 +2562,30 @@ body.idle .tk-info {
 
 /* Comments drawer */
 .tk-backdrop {
-    position: fixed;
+    position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.55);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.25s;
-    z-index: 47;
+    z-index: 44;
 }
 
 .tk-drawer {
-    position: fixed;
+    position: absolute;
     left: 0;
     right: 0;
     bottom: 0;
-    height: min(58vh, 520px);
-    background: #1f1f1f;
-    border-radius: 18px 18px 0 0;
-    z-index: 48;
+    height: min(68%, 560px);
+    background: #161616;
+    border-radius: 16px 16px 0 0;
+    z-index: 46;
     display: flex;
     flex-direction: column;
     transform: translateY(103%);
     transition: transform 0.3s cubic-bezier(0.32, 0.72, 0.35, 1);
     pointer-events: auto;
+    box-shadow: 0 -12px 44px rgba(0, 0, 0, 0.6);
 }
 
 body.tk-drawer-open .tk-drawer {
@@ -2606,8 +2601,8 @@ body.tk-drawer-open .tk-backdrop {
     width: 38px;
     height: 4px;
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.35);
-    margin: 10px auto 4px;
+    background: rgba(255, 255, 255, 0.28);
+    margin: 10px auto 2px;
     flex-shrink: 0;
 }
 
@@ -2615,25 +2610,30 @@ body.tk-drawer-open .tk-backdrop {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 4px 18px 10px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+    padding: 2px 8px 10px;
+    border-bottom: none;
+    flex-shrink: 0;
 }
 
 .tk-drawer-title {
-    font-size: 0.9rem;
+    font-size: 0.82rem;
     font-weight: 600;
-    color: #ddd;
+    color: rgba(255, 255, 255, 0.9);
+    margin: 0 auto;
 }
 
 .tk-drawer-title b {
     color: #fff;
+    font-variant-numeric: tabular-nums;
 }
 
 .tk-drawer-close {
+    position: absolute;
+    right: 6px;
     background: transparent;
     border: none;
-    color: #ddd;
-    font-size: 1.15rem;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 1.05rem;
     width: 36px;
     height: 36px;
     border-radius: 50%;
@@ -2647,34 +2647,46 @@ body.tk-drawer-open .tk-backdrop {
 .tk-drawer-list {
     flex: 1;
     overflow-y: auto;
-    padding: 14px 18px;
+    padding: 8px 16px 12px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 18px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
 }
 
 .tk-drawer-form {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
-    border-top: 1px solid rgba(255, 255, 255, 0.09);
+    padding: 8px 14px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: #161616;
     flex-shrink: 0;
 }
 
 .tk-drawer-avatar {
-    width: 32px !important;
-    height: 32px !important;
-    font-size: 0.72rem !important;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #25f4ee 0%, #fe2c55 100%);
+    color: #0f0f0f;
+    font-weight: 800;
+    font-size: 0.72rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    user-select: none;
 }
 
 .tk-drawer-form input {
     flex: 1;
     min-width: 0;
-    height: 38px;
-    border-radius: 19px;
+    height: 40px;
+    border-radius: 20px;
     border: none;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.09);
     color: #fff;
     padding: 0 16px;
     font-size: 0.9rem;
@@ -2683,6 +2695,95 @@ body.tk-drawer-open .tk-backdrop {
 .tk-drawer-form input:focus {
     outline: none;
     background: rgba(255, 255, 255, 0.16);
+}
+
+.tk-comment {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+.tk-comment-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #0f0f0f;
+    background: linear-gradient(135deg, #25f4ee 0%, #fe2c55 100%);
+    user-select: none;
+}
+
+.tk-comment-body {
+    min-width: 0;
+    flex: 1;
+}
+
+.tk-comment-name {
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+    line-height: 1.25;
+}
+
+.tk-comment-text {
+    font-size: 0.9rem;
+    color: #fff;
+    line-height: 1.35;
+    word-break: break-word;
+    margin-top: 2px;
+}
+
+.tk-comment-meta {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 6px;
+    font-size: 0.72rem;
+    color: rgba(255, 255, 255, 0.42);
+}
+
+.tk-comment-reply {
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.55);
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: default;
+}
+
+.tk-comment-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.66rem;
+    padding-top: 2px;
+}
+
+.tk-comment-actions i {
+    font-size: 0.95rem;
+}
+
+.tk-comment-delete {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.38);
+    cursor: pointer;
+    padding: 2px;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+    align-self: center;
+}
+
+.tk-comment-delete:hover {
+    color: rgba(255, 255, 255, 0.85);
 }
 
 .tk-drawer-send {
@@ -2769,16 +2870,11 @@ body.mode-tiktok .subtitle-overlay {
    ============================================================ */
 .yt-only,
 .tk-only,
-.ambient-only,
 .youtube-only {
     display: none;
 }
 
 /* YouTube mode */
-body.mode-youtube .yt-only#yt-header {
-    display: flex;
-}
-
 body.mode-youtube #yt-info.yt-only {
     display: block;
 }
@@ -2791,17 +2887,7 @@ body.mode-youtube .youtube-only {
     display: flex; /* control-btn theater button */
 }
 
-/* Плеер mode & TikTok mode: ambient floating bar */
-body.mode-player .ambient-bar,
-body.mode-tiktok .ambient-bar {
-    display: flex;
-}
-
 /* TikTok mode: chrome overlays */
-body.mode-tiktok #tk-chrome.tk-only {
-    display: block;
-}
-
 body.mode-tiktok .tk-rail {
     display: flex;
 }
@@ -2950,22 +3036,30 @@ body.mode-tiktok .tk-info {
     pointer-events: none;
 }
 
-.quality-note {
-    padding: 8px 16px 10px;
-    font-size: 0.72rem;
-    line-height: 1.35;
-    color: var(--text-secondary);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+.quality-main {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    line-height: 1.15;
 }
 
-.quality-tag {
-    margin-left: auto;
-    font-size: 0.68rem;
-    color: var(--text-secondary);
-    background: rgba(255, 255, 255, 0.08);
-    border-radius: 999px;
-    padding: 2px 7px;
-    font-weight: 500;
+.quality-overline {
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    color: rgba(255, 255, 255, 0.42);
+    text-transform: uppercase;
+}
+
+.quality-name {
+    font-size: 0.9rem;
+    font-weight: 400;
+    color: #fff;
+}
+
+.settings-option.quality-original .quality-name {
+    font-weight: 700;
 }
 
 .settings-option.inert-note {
@@ -3028,6 +3122,7 @@ body.idle .close-video-btn {
 
 /* Theater button — the same empty rectangle, stretched wide in theater mode */
 #theater-icon {
+    transform: scaleX(1.3);
     transition: transform 0.18s ease;
 }
 
@@ -3047,4 +3142,73 @@ body.idle .close-video-btn {
 
 .sleep-options {
     max-height: 320px;
+}
+
+/* TikTok comment drawer & backdrop exist only in TikTok mode */
+.tk-drawer,
+.tk-backdrop {
+    display: none;
+}
+
+body.mode-tiktok .tk-drawer {
+    display: flex;
+}
+
+body.mode-tiktok .tk-backdrop {
+    display: block;
+}
+
+/* TikTok empty state for the comments drawer */
+.tk-comment-empty {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 0.85rem;
+    padding: 28px 12px;
+}
+
+/* ============================================================
+   TikTok-style embedded sheet for the settings sub-views:
+   rounded top, drag handle, same 9:16 width as the share sheet
+   ============================================================ */
+#settings-menu.as-sheet {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    width: auto;
+    max-width: none;
+    border-radius: 16px 16px 0 0;
+    background: #161616;
+    backdrop-filter: none;
+    z-index: 46;
+    max-height: min(74%, 580px);
+    overflow-y: auto;
+    padding-top: 2px;
+    animation: sheetUp 0.3s cubic-bezier(0.32, 0.72, 0.35, 1);
+}
+
+#settings-menu.as-sheet::before {
+    content: '';
+    display: block;
+    width: 38px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.28);
+    margin: 8px auto 4px;
+}
+
+#settings-menu.as-sheet .settings-submenu-header {
+    padding-top: 2px;
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+#settings-menu.as-sheet .settings-option {
+    padding-left: 22px;
+    padding-right: 22px;
+    min-height: 46px;
+}
+
+@keyframes sheetUp {
+    from { transform: translateY(105%); }
+    to   { transform: none; }
 }

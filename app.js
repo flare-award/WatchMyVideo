@@ -29,8 +29,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const tkVolumeSlider = $('tk-volume-slider');
     const tkVolumeValue = $('tk-sheet-volume-value');
     const btnCloseVideoHeader = $('btn-close-header');
-    const btnCloseVideoAmbient = $('btn-close-ambient');
     const audioCover = $('audio-cover');
+    let coverIsGenerated = false; // only generated artwork is copy-protected
+    if (audioCover) {
+        audioCover.setAttribute('draggable', 'false');
+        audioCover.addEventListener('contextmenu', (e) => {
+            if (coverIsGenerated) e.preventDefault(); // «Сохранить картинку» would expose the generated art
+        });
+    }
     const qualityCanvasEl = $('quality-canvas');
     const btnLoopToggle = $('btn-loop-toggle');
     const btnAutoplay = $('btn-autoplay');
@@ -39,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const studioLightCheckbox = $('studio-light-checkbox');
     const seekPreview = $('seek-preview');
     const seekPreviewCanvas = $('seek-preview-canvas');
-    const ambientGlow = $('ambient-glow');
+    const ambientCanvas = $('ambient-canvas');
     const qualityCanvas = $('quality-canvas');
     let qualityCtx = null;   // created lazily, only for the non-WebGL fallback
 
@@ -139,6 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Misc
     const toastEl = $('toast');
     const thumbVideo = $('thumb-video');
+    const seekThumbVideo = $('seek-thumb-video');
     const modePillButtons = Array.from(document.querySelectorAll('.mode-pill-btn'));
 
     // ---- State ----
@@ -161,6 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentVideoKey = null;
     let currentFileName = '';
     let currentFileSize = 0;
+    let currentFileCreated = null; // ms epoch — the file's own mtime, null for session restores
     let currentFileUrl = null; // object URL (session-scoped)
     let pendingSeekTime = null;
 
@@ -173,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const QUALITY_RUNGS = [144, 240, 360, 480, 720, 1080, 1440, 2160]; // label rungs (px, short side)
     const QUALITY_ARTIFICIAL_DOWN = [144, 240, 360, 480, 720, 1080, 1440]; // below-source rungs we synthesize
     const QUALITY_ARTIFICIAL_UP = [1440, 2160];                            // upscale tiers offered when missing
-    let availableQualities = [{ key: 'original', label: 'Исходное', height: 0, artificial: false }];
+    let availableQualities = [{ key: 'original', label: '0', height: 0, original: true }];
     let currentQualityKey = 'original';
     let qualityProxyOn = false;
 
@@ -338,11 +346,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function scheduleIdle() {
         clearTimeout(idleTimer);
-        if (video.paused || isOverlayOpen() || isDraggingProgress) {
+        if (isOverlayOpen() || isDraggingProgress) {
             return;
         }
         idleTimer = setTimeout(() => {
-            if (!video.paused && !isOverlayOpen() && !isDraggingProgress) {
+            if (!isOverlayOpen() && !isDraggingProgress) {
                 document.body.classList.add('idle');
             }
         }, IDLE_DELAY_MS);
@@ -419,15 +427,22 @@ document.addEventListener('DOMContentLoaded', () => {
     function startPlaybackSession(sourceUrl, videoKey, fileName, fileSize, opts = {}) {
         stopQualityProxy();
         qualitiesComputed = false;
+        resetFpsSampler();
         currentQualityKey = 'original';
+        leaveSheetMode();
+        if (settingsMenu) settingsMenu.classList.add('hidden');
         currentVideoKey = videoKey;
         currentFileUrl = sourceUrl;
         currentFileName = fileName || 'Видео';
         currentFileSize = fileSize || 0;
+        currentFileCreated = opts.created || null;
         currentIsAudio = !!opts.audio;
 
         video.src = sourceUrl;
         video.load();
+        if (seekThumbVideo) {
+            try { seekThumbVideo.src = sourceUrl; } catch (_) { /* keep old source */ }
+        }
         // Spec: load() resets playbackRate -> defaultPlaybackRate, so set both
         video.defaultPlaybackRate = playbackSpeed;
         video.playbackRate = playbackSpeed;
@@ -444,12 +459,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (currentIsAudio) {
                 if (opts.coverUrl) {
                     audioCover.src = opts.coverUrl;
+                    coverIsGenerated = false;
                 } else {
                     audioCover.src = generateAudioCover(stripExtension(currentFileName) || 'Аудио');
+                    coverIsGenerated = true;
                 }
                 audioCover.alt = stripExtension(currentFileName) || 'Обложка трека';
+                audioCover.draggable = false;
                 audioCover.classList.remove('hidden');
-                setAmbientColor(hueFromString(currentFileName || 'audio'));
+                if (studioLight && ambientCanvas) paintAmbientFrame();
             } else {
                 audioCover.removeAttribute('src');
                 audioCover.classList.add('hidden');
@@ -489,16 +507,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const url = URL.createObjectURL(file);
         const key = `file:${file.name}:${file.size}`;
-        registerRecentVideo({ key, title: stripExtension(file.name), url, isDemo: false, size: file.size });
+        registerRecentVideo({ key, title: stripExtension(file.name), url, isDemo: false, size: file.size, created: file.lastModified || null });
         if (audio) {
             // Try to pull embedded cover art (ID3 APIC); fall back to a generated cover.
             extractEmbeddedCover(file).then((blob) => {
-                startPlaybackSession(url, key, file.name, file.size, { audio: true, coverUrl: blob ? URL.createObjectURL(blob) : null });
+                startPlaybackSession(url, key, file.name, file.size, { audio: true, coverUrl: blob ? URL.createObjectURL(blob) : null, created: file.lastModified || null });
             }).catch(() => {
-                startPlaybackSession(url, key, file.name, file.size, { audio: true, coverUrl: null });
+                startPlaybackSession(url, key, file.name, file.size, { audio: true, coverUrl: null, created: file.lastModified || null });
             });
         } else {
-            startPlaybackSession(url, key, file.name, file.size, { audio: false });
+            startPlaybackSession(url, key, file.name, file.size, { audio: false, created: file.lastModified || null });
         }
     }
 
@@ -549,10 +567,11 @@ document.addEventListener('DOMContentLoaded', () => {
         currentFileUrl = null;
         currentFileName = '';
         currentFileSize = 0;
+        currentFileCreated = null;
         pendingSeekTime = null;
         qualitiesComputed = false;
         currentQualityKey = 'original';
-        availableQualities = [{ key: 'original', label: 'Исходное', height: 0, artificial: false }];
+        availableQualities = [{ key: 'original', label: '0', height: 0, original: true }];
 
         subtitleTracks = [];
         currentSubtitleTrackId = 'off';
@@ -588,9 +607,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Видео закрыто');
     }
 
-    [btnCloseVideoHeader, btnCloseVideoAmbient].forEach((btn) => {
-        if (btn) btn.addEventListener('click', closeCurrentVideo);
-    });
+    if (btnCloseVideoHeader) btnCloseVideoHeader.addEventListener('click', closeCurrentVideo);
 
     // =========================================================
     //  Suggestions feed ("Похожие видео")
@@ -680,7 +697,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Filter out legacy demo entries stored by earlier builds — the demo is gone.
             if (!v.isDemo) {
                 item.addEventListener('click', () => {
-                    startPlaybackSession(v.url, v.key, v.title, v.size);
+                    startPlaybackSession(v.url, v.key, v.title, v.size, { created: v.created || null });
                 });
             } else {
                 item.remove();
@@ -780,17 +797,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function buildDescription() {
-        const lines = [];
-        lines.push(stripExtension(currentFileName) || currentFileName);
         const parts = [];
+        if (currentFileCreated) {
+            try {
+                parts.push('Создано: ' + new Date(currentFileCreated).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }));
+            } catch (_) { /* unreadable mtime — skip the date */ }
+        }
         if (currentFileSize) parts.push(formatBytes(currentFileSize));
-        if (hasDuration()) parts.push('Длительность: ' + formatTime(video.duration));
-        if (video.videoWidth && video.videoHeight) parts.push(`${video.videoWidth}×${video.videoHeight}`);
-        const ext = (currentFileName.match(/\.([a-z0-9]+)$/i) || [])[1];
-        if (ext) parts.push(ext.toUpperCase());
-        if (parts.length) lines.push(parts.join('  ·  '));
-        lines.push('Открыто локально в браузере — файл никуда не загружается.');
-        return lines.join('\n');
+        return parts.join('  ·  ');
     }
 
     // Flag for files that report an infinite duration until they are seeked once
@@ -942,11 +956,20 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast(saved ? 'Удалено из сохранённого' : 'Сохранено к вам');
     }
 
+    let tkFollowHideTimer = 0;
+
     function toggleSubscribe() {
         const subscribed = storageGet(SUBSCRIBED_KEY, '0') === '1';
-        storageSet(SUBSCRIBED_KEY, subscribed ? '0' : '1');
+        const next = !subscribed;
+        storageSet(SUBSCRIBED_KEY, next ? '1' : '0');
         refreshSocialUI();
-        showToast(subscribed ? 'Вы отписались' : 'Спасибо за подписку!');
+        clearTimeout(tkFollowHideTimer);
+        if (next) {
+            tkFollowHideTimer = setTimeout(() => tkFollow.classList.add('follow-hidden'), 300);
+        } else {
+            tkFollow.classList.remove('follow-hidden');
+        }
+        showToast(next ? 'Вы подписались' : 'Вы отписались');
     }
 
     // Share / Download — deliberately inert stubs that look like the real
@@ -1030,6 +1053,60 @@ document.addEventListener('DOMContentLoaded', () => {
         return item;
     }
 
+    function tkCommentNode(comment, onDelete) {
+        const item = document.createElement('div');
+        item.className = 'tk-comment';
+
+        const avatar = document.createElement('div');
+        avatar.className = 'tk-comment-avatar';
+        avatar.textContent = 'Я';
+
+        const body = document.createElement('div');
+        body.className = 'tk-comment-body';
+
+        const name = document.createElement('div');
+        name.className = 'tk-comment-name';
+        name.textContent = '@you';
+
+        const text = document.createElement('div');
+        text.className = 'tk-comment-text';
+        text.textContent = comment.text;
+
+        const meta = document.createElement('div');
+        meta.className = 'tk-comment-meta';
+        const time = document.createElement('span');
+        time.textContent = timeAgo(comment.ts);
+        const reply = document.createElement('button');
+        reply.type = 'button';
+        reply.className = 'tk-comment-reply';
+        reply.textContent = 'Ответить';
+        meta.appendChild(time);
+        meta.appendChild(reply);
+
+        body.appendChild(name);
+        body.appendChild(text);
+        body.appendChild(meta);
+        item.appendChild(avatar);
+        item.appendChild(body);
+
+        const actions = document.createElement('div');
+        actions.className = 'tk-comment-actions';
+        actions.innerHTML = '<i class="fa-solid fa-heart"></i><span>0</span>';
+        item.appendChild(actions);
+
+        if (onDelete) {
+            const del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'tk-comment-delete';
+            del.title = 'Удалить комментарий';
+            del.setAttribute('aria-label', 'Удалить комментарий');
+            del.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
+            del.addEventListener('click', onDelete);
+            item.appendChild(del);
+        }
+        return item;
+    }
+
     function renderComments() {
         const key = currentVideoKey;
         const comments = key ? getComments(key) : [];
@@ -1037,26 +1114,29 @@ document.addEventListener('DOMContentLoaded', () => {
         tkCommentCount.textContent = String(comments.length);
         tkDrawerCount.textContent = String(comments.length);
 
-        const renderInto = (container, withDelete) => {
+        const renderInto = (container, withDelete, variant) => {
             container.innerHTML = '';
             if (comments.length === 0) {
                 const empty = document.createElement('div');
-                empty.className = 'yt-comment-empty';
+                empty.className = variant === 'tk' ? 'tk-comment-empty' : 'yt-comment-empty';
                 empty.textContent = 'Комментариев пока нет. Будьте первым!';
                 container.appendChild(empty);
                 return;
             }
             comments.slice().reverse().forEach((comment) => {
-                container.appendChild(commentNode(comment, withDelete ? () => {
+                const onDelete = () => {
                     const next = getComments(key).filter((c) => c.id !== comment.id);
                     setComments(key, next);
                     renderComments();
-                } : null));
+                };
+                container.appendChild(variant === 'tk'
+                    ? tkCommentNode(comment, withDelete ? onDelete : null)
+                    : commentNode(comment, withDelete ? onDelete : null));
             });
         };
 
-        renderInto(ytCommentList, true);
-        renderInto(tkCommentList, true);
+        renderInto(ytCommentList, true, 'yt');
+        renderInto(tkCommentList, true, 'tk');
     }
 
     function addComment(text) {
@@ -1164,8 +1244,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     btnPlayPause.addEventListener('click', togglePlayPause);
     video.addEventListener('click', togglePlayPause);
+    const qualityCanvasTop = $('quality-canvas');
+    const audioCoverTop = $('audio-cover');
+    if (qualityCanvasTop) qualityCanvasTop.addEventListener('click', togglePlayPause);
+    if (audioCoverTop) audioCoverTop.addEventListener('click', togglePlayPause);
 
     video.addEventListener('play', () => {
+        startFpsSampler();
         playerWrapper.classList.remove('video-ended');
         updatePlayPauseButton(true);
         replayOverlay.classList.add('hidden');
@@ -1279,11 +1364,13 @@ document.addEventListener('DOMContentLoaded', () => {
             progressTooltip.style.left = Math.max(18, Math.min(rect.width - 18, tooltipX)) + 'px';
             progressTooltip.textContent = formatTime(ratio * video.duration);
             progressTooltip.style.display = 'block';
+            showSeekPreview(ratio);
         }
     });
 
     progressContainer.addEventListener('pointerleave', () => {
         progressTooltip.style.display = 'none';
+        hideSeekPreview();
     });
 
     function seekToPosition(e) {
@@ -1498,8 +1585,58 @@ document.addEventListener('DOMContentLoaded', () => {
         return { size: syncsafe, syncsafe: true };
     }
 
+    // Minimal MP4 atom walker: moov → udta → meta → ilst → covr → data.
+    // Best-effort — any structural surprise falls back to the generated cover.
+    async function extractMp4Cover(file) {
+        try {
+            const buf = await file.arrayBuffer();
+            const dv = new DataView(buf);
+            const len = dv.byteLength;
+            const typeOf = (off) => String.fromCharCode(dv.getUint8(off), dv.getUint8(off + 1), dv.getUint8(off + 2), dv.getUint8(off + 3));
+            const readAtoms = (start, end) => {
+                const atoms = [];
+                let off = start;
+                while (off + 8 <= end) {
+                    let size = dv.getUint32(off);
+                    const type = typeOf(off + 4);
+                    let header = 8;
+                    if (size === 1) { if (off + 16 > end) break; size = Number(dv.getBigUint64(off + 8)); header = 16; }
+                    else if (size === 0) { size = end - off; }
+                    if (size < header || off + size > end) break;
+                    atoms.push({ type, start: off + header, end: off + size });
+                    off += size;
+                }
+                return atoms;
+            };
+            const child = (atom, wanted) => atom && readAtoms(atom.start, atom.end).find((a) => a.type === wanted);
+            const moov = readAtoms(0, len).find((a) => a.type === 'moov');
+            if (!moov) return null;
+            let cur = moov;
+            const udta = child(cur, 'udta');
+            if (udta) cur = udta;
+            const meta = child(cur, 'meta');
+            if (!meta) return null;
+            const ilst = readAtoms(meta.start + 4, meta.end).find((a) => a.type === 'ilst'); // 4 bytes version/flags
+            const covr = child(ilst, 'covr');
+            const dataAtom = child(covr, 'data');
+            if (!dataAtom) return null;
+            const imgStart = dataAtom.start + 8; // 1B type + 3B locale + 4B reserved
+            const imgEnd = dataAtom.end;
+            if (imgEnd - imgStart < 32) return null;
+            const bytes = new Uint8Array(buf.slice(imgStart, imgEnd));
+            const mime = bytes[0] === 0x89 ? 'image/png' : (bytes[0] === 0xff ? 'image/jpeg' : null);
+            return mime ? new Blob([bytes], { type: mime }) : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
     async function extractEmbeddedCover(file) {
         try {
+            const ext = ((file.name.match(/\.([a-z0-9]+)$/i) || [])[1] || '').toLowerCase();
+            if (ext === 'mp4' || ext === 'm4a' || ext === 'm4b' || ext === 'aac' || ext === 'mov') {
+                return await extractMp4Cover(file);
+            }
             const buf = await file.arrayBuffer();
             const view = new DataView(buf);
             if (view.byteLength < 10) return null;
@@ -1610,36 +1747,41 @@ document.addEventListener('DOMContentLoaded', () => {
         return c.toDataURL('image/png');
     }
 
-    function setAmbientColor(hue) {
-        document.body.style.setProperty('--ambient-color', `hsl(${hue} 55% 50% / 0.62)`);
-    }
-
     // =========================================================
-    //  Профессиональное освещение — ambient glow + filmic warmth
+    //  Профессиональное освещение — YouTube-style ambient: a blurred,
+    //  cover-fit painting of the live frame bleeds into the black
+    //  letterbox area around the picture. Re-painted while playing.
     // =========================================================
     let ambientTimer = null;
 
-    function sampleAmbientFrame() {
+    function paintAmbientFrame() {
         try {
-            if (currentIsAudio) return;
-            const srcEl = qualityProxyOn ? qualityCanvas : video;
-            if (!srcEl) return;
-            const s = sampleAmbientFrame.canvas || (sampleAmbientFrame.canvas = Object.assign(document.createElement('canvas'), { width: 16, height: 16 }));
-            const ctx = s.getContext('2d', { willReadFrequently: true });
-            ctx.drawImage(srcEl, 0, 0, 16, 16);
-            const d = ctx.getImageData(0, 0, 16, 16).data;
-            let r = 0, g = 0, b = 0;
-            for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
-            const n = d.length / 4;
-            r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
-            // Lift saturation a touch so the glow reads as "light", not mud
-            const max = Math.max(r, g, b) || 1;
-            const boost = Math.min(1.6, 190 / max);
-            r = Math.min(255, Math.round(r * boost * 1.15 + 18));
-            g = Math.min(255, Math.round(g * boost * 1.15 + 18));
-            b = Math.min(255, Math.round(b * boost * 1.15 + 18));
-            document.body.style.setProperty('--ambient-color', `rgb(${r} ${g} ${b} / 0.75)`);
-        } catch (_) { /* frame not ready — keep the previous tint */ }
+            if (!ambientCanvas) return;
+            const W = 144, H = 81; // tiny — CSS blur + upscaling does the rest
+            if (ambientCanvas.width !== W) {
+                ambientCanvas.width = W;
+                ambientCanvas.height = H;
+            }
+            const ctx = ambientCanvas.getContext('2d');
+            if (currentIsAudio) {
+                // Static soft radial in the track's own hue (audio has no frames)
+                const hue = hueFromString(currentFileName || 'audio');
+                const g = ctx.createRadialGradient(W / 2, H / 2, 6, W / 2, H / 2, W * 0.75);
+                g.addColorStop(0, `hsl(${hue} 62% 48%)`);
+                g.addColorStop(0.55, `hsl(${(hue + 32) % 360} 52% 26%)`);
+                g.addColorStop(1, '#050505');
+                ctx.fillStyle = g;
+                ctx.fillRect(0, 0, W, H);
+                return;
+            }
+            const sw = video.videoWidth, sh = video.videoHeight;
+            if (!sw || !sh) return;
+            // Cover-fit: same colors, pushed all the way into the edges
+            const scale = Math.max(W / sw, H / sh);
+            const dw = sw * scale, dh = sh * scale;
+            ctx.clearRect(0, 0, W, H);
+            ctx.drawImage(video, (W - dw) / 2, (H - dh) / 2, dw, dh);
+        } catch (_) { /* frame not ready — keep the previous paint */ }
     }
 
     function applyStudioLight() {
@@ -1653,13 +1795,10 @@ document.addEventListener('DOMContentLoaded', () => {
         clearInterval(ambientTimer);
         ambientTimer = null;
         if (studioLight) {
-            if (currentIsAudio) setAmbientColor(hueFromString(currentFileName || 'audio'));
-            else {
-                sampleAmbientFrame();
-                ambientTimer = setInterval(sampleAmbientFrame, 700);
+            paintAmbientFrame();
+            if (!currentIsAudio) {
+                ambientTimer = setInterval(paintAmbientFrame, 350);
             }
-        } else {
-            document.body.style.removeProperty('--ambient-color');
         }
     }
 
@@ -1815,6 +1954,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const tkStudioLight = $('tk-studio-light');
     const tkLoopSheetBtn = $('tk-loop-toggle');
 
+    let settingsFromSheet = false;
+
     function openShareSheet(open) {
         if (!tkShareSheet) return;
         tkShareSheet.classList.toggle('open', open);
@@ -1844,7 +1985,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function openSettingsViewFromSheet(view) {
         closeShareSheet();
+        settingsFromSheet = true;
+        settingsMenu.classList.add('as-sheet');
         openSettingsMenu(true, view);
+    }
+
+    function leaveSheetMode() {
+        settingsFromSheet = false;
+        if (settingsMenu) settingsMenu.classList.remove('as-sheet');
     }
 
     const stopProp = (fn) => (e) => { e.stopPropagation(); fn(); };
@@ -1935,10 +2083,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     const seekPreviewCheckbox = $('seek-preview-checkbox');
 
-    function drawSeekPreview() {
+    function drawSeekPreview(source) {
         if (!seekPreviewEnabled || !seekPreviewCanvas) return;
         if (currentIsAudio) return;
-        const sw = video.videoWidth, sh = video.videoHeight;
+        const sw = source.videoWidth, sh = source.videoHeight;
         if (!sw || !sh) return;
         const ctx = seekPreviewCanvas.getContext('2d');
         const cw = seekPreviewCanvas.width, ch = seekPreviewCanvas.height;
@@ -1947,7 +2095,41 @@ document.addEventListener('DOMContentLoaded', () => {
         const scale = Math.min(cw / sw, ch / sh);
         const dw = Math.max(2, Math.round(sw * scale));
         const dh = Math.max(2, Math.round(sh * scale));
-        ctx.drawImage(video, Math.round((cw - dw) / 2), Math.round((ch - dh) / 2), dw, dh);
+        try {
+            ctx.drawImage(source, Math.round((cw - dw) / 2), Math.round((ch - dh) / 2), dw, dh);
+        } catch (_) { /* frame not decoded yet */ }
+    }
+
+    // Hover-preview seeks (throttled by the browser's own seek pipeline)
+    let seekThumbBusy = false;
+    let seekThumbWantedRatio = 0;
+
+    function queueThumbPreview(ratio) {
+        if (!seekThumbVideo || !hasDuration()) return;
+        seekThumbWantedRatio = ratio;
+        if (seekThumbBusy) return;
+        seekThumbBusy = true;
+        try {
+            seekThumbVideo.currentTime = ratio * video.duration;
+        } catch (_) {
+            seekThumbBusy = false;
+        }
+    }
+
+    if (seekThumbVideo) {
+        seekThumbVideo.addEventListener('seeked', () => {
+            drawSeekPreview(seekThumbVideo);
+            // A newer position was requested while we were seeking — catch up
+            const wanted = seekThumbWantedRatio * video.duration;
+            if (hasDuration() && Math.abs(seekThumbVideo.currentTime - wanted) > 0.08) {
+                try {
+                    seekThumbVideo.currentTime = wanted;
+                    return;
+                } catch (_) { /* give up quietly */ }
+            }
+            seekThumbBusy = false;
+        });
+        seekThumbVideo.addEventListener('error', () => { seekThumbBusy = false; });
     }
 
     function positionSeekPreview(ratio) {
@@ -1961,7 +2143,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function showSeekPreview(ratio) {
         if (!seekPreviewEnabled || !seekPreview) return;
         positionSeekPreview(ratio);
-        drawSeekPreview();
+        if (isDraggingProgress) {
+            drawSeekPreview(video);
+        } else {
+            queueThumbPreview(ratio);
+        }
         seekPreview.classList.remove('hidden');
     }
 
@@ -1970,7 +2156,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     video.addEventListener('seeked', () => {
-        if (isDraggingProgress) drawSeekPreview();
+        if (isDraggingProgress) drawSeekPreview(video);
     });
 
     if (seekPreviewCheckbox) {
@@ -1987,8 +2173,55 @@ document.addEventListener('DOMContentLoaded', () => {
     //  Quality — the site synthesizes low tiers itself (canvas downscale); the
     //  original tier is derived from the source resolution.
     // =========================================================
-    function tierLabel(t) {
-        return t >= 2160 ? '4K' : (t >= 1440 ? '2K' : `${t}p`);
+    function qualityOverline(height) {
+        if (height >= 2160) return '4K';
+        if (height >= 1080) return 'HD'; // 1080p and 1440p both read HD
+        return '';
+    }
+
+    let knownFps = null;       // measured during real playback via rVFC
+    let fpsSamples = [];
+    let fpsLastMediaTime = 0;
+    let fpsSampling = false;
+
+    function qualityLabel(height) {
+        return knownFps ? `${height}p${knownFps}` : `${height}p`;
+    }
+
+    function resetFpsSampler() {
+        knownFps = null;
+        fpsSamples = [];
+        fpsLastMediaTime = 0;
+        fpsSampling = false;
+    }
+
+    function startFpsSampler() {
+        if (fpsSampling) return;
+        if (typeof video.requestVideoFrameCallback !== 'function') return;
+        fpsSampling = true;
+        const step = (now, meta) => {
+            if (!fpsSampling) return;
+            if (meta && typeof meta.mediaTime === 'number') {
+                if (fpsLastMediaTime) {
+                    const delta = meta.mediaTime - fpsLastMediaTime;
+                    if (delta > 0.001 && delta < 0.2) fpsSamples.push(delta);
+                }
+                fpsLastMediaTime = meta.mediaTime;
+            }
+            if (fpsSamples.length >= 30) {
+                const sorted = fpsSamples.slice(-30).sort((a, b) => a - b);
+                const mid = sorted[Math.floor(sorted.length / 2)];
+                const fps = Math.round(1 / mid);
+                fpsSampling = false;
+                if (fps >= 10 && fps <= 240 && fps !== knownFps) {
+                    knownFps = fps;
+                    if (updateQualityUI) updateQualityUI();
+                }
+                return;
+            }
+            video.requestVideoFrameCallback(step);
+        };
+        video.requestVideoFrameCallback(step);
     }
 
     function masterTierFor(minDim) {
@@ -2005,25 +2238,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const vh = video.videoHeight || 0;
         const minDim = Math.min(vw, vh);
         if (!minDim) {
-            availableQualities = [{ key: 'original', label: 'Исходное', height: 0, artificial: false }];
+            availableQualities = [{ key: 'original', label: '0', height: 0, original: true }];
             currentQualityKey = 'original';
             return;
         }
         const orig = masterTierFor(minDim);
-        const list = [{ key: 'original', label: tierLabel(orig), height: orig, artificial: false }];
+        const list = [{ key: 'original', label: String(orig), height: orig, original: true }];
         const seen = new Set(['original']);
-        // Artificial rungs below the source (downscale).
+        // Rungs below the source (downscale).
         for (const t of QUALITY_ARTIFICIAL_DOWN) {
             if (t < orig && !seen.has(String(t))) {
-                list.push({ key: String(t), label: tierLabel(t), height: t, artificial: true });
+                list.push({ key: String(t), label: String(t), height: t, original: false });
                 seen.add(String(t));
             }
         }
-        // Artificial upscale tiers — offer the 2K/4K rungs even when the source
-        // is below them (canvas upscale; the source stays untouched).
+        // Upscale tiers — offered even when the source is below them
+        // (canvas upscale; the source stays untouched).
         for (const t of QUALITY_ARTIFICIAL_UP) {
             if (t > orig && !seen.has(String(t))) {
-                list.push({ key: String(t), label: tierLabel(t), height: t, artificial: true });
+                list.push({ key: String(t), label: String(t), height: t, original: false });
                 seen.add(String(t));
             }
         }
@@ -2037,21 +2270,24 @@ document.addEventListener('DOMContentLoaded', () => {
         qualityOptions.innerHTML = '';
         availableQualities.forEach((q) => {
             const opt = document.createElement('div');
-            opt.className = 'settings-option' + (q.key === currentQualityKey ? ' active' : '');
+            opt.className = 'settings-option' + (q.key === currentQualityKey ? ' active' : '') + (q.original ? ' quality-original' : '');
             opt.setAttribute('data-quality', q.key);
             opt.setAttribute('role', 'menuitem');
             opt.setAttribute('tabindex', '0');
-            if (q.artificial) {
-                const name = document.createElement('span');
-                name.textContent = q.label;
-                const tag = document.createElement('span');
-                tag.className = 'quality-tag';
-                tag.textContent = 'искусственно';
-                opt.appendChild(name);
-                opt.appendChild(tag);
-            } else {
-                opt.textContent = `${q.label} · оригинал`;
+            const main = document.createElement('span');
+            main.className = 'quality-main';
+            const overline = qualityOverline(q.height);
+            if (overline) {
+                const over = document.createElement('span');
+                over.className = 'quality-overline';
+                over.textContent = overline;
+                main.appendChild(over);
             }
+            const name = document.createElement('span');
+            name.className = 'quality-name';
+            name.textContent = qualityLabel(q.height);
+            main.appendChild(name);
+            opt.appendChild(main);
             opt.addEventListener('click', () => {
                 switchQuality(q.key);
                 switchSettingsView(settingsMain);
@@ -2059,17 +2295,16 @@ document.addEventListener('DOMContentLoaded', () => {
             qualityOptions.appendChild(opt);
         });
         const active = availableQualities.find((q) => q.key === currentQualityKey) || availableQualities[0];
-        setChevronValue(currentQualityLabel, active ? active.label : 'Исходное');
+        setChevronValue(currentQualityLabel, active ? qualityLabel(active.height) : 'Авто');
         updateQualityBadge(active ? active.height : 0);
     }
 
-    // Gear badge — HD for 1080, 2K for 1440, 4K for 2160, none below 1080
+    // Gear badge — HD for 1080+, 4K for 2160, none below 1080
     function updateQualityBadge(rungHeight) {
         if (!settingsQualityBadge) return;
         const h = Number(rungHeight) || 0;
         let text = '';
         if (h >= 2160) text = '4K';
-        else if (h >= 1440) text = '2K';
         else if (h >= 1080) text = 'HD';
         settingsQualityBadge.textContent = text;
         settingsQualityBadge.classList.toggle('hidden', !text);
@@ -2167,7 +2402,7 @@ void main() {
         return true;
     }
 
-    // 2K/4K get a strong-but-sane enhancement; downscale is a clean resample
+    // Upscale rungs get a strong-but-sane enhancement; downscale is a clean resample
     function enhanceParamsForHeight(height) {
         if (height >= 2160) return { sharp: 0.85, contrast: 1.13, sat: 1.07, warm: 0.6 };
         if (height >= 1440) return { sharp: 0.65, contrast: 1.10, sat: 1.06, warm: 0.5 };
@@ -2257,7 +2492,7 @@ void main() {
         const target = availableQualities.find((q) => q.key === qualityKey);
         if (!target) return;
         currentQualityKey = qualityKey;
-        if (target.artificial) {
+        if (!target.original) {
             startQualityProxy(target.height);
         } else {
             stopQualityProxy();
@@ -2495,14 +2730,14 @@ void main() {
 
     btnVolumeBoost.addEventListener('click', () => {
         if (!ensureBoostGraph()) {
-            showToast('Усиление звука не поддерживается в этом браузере');
+            showToast('Усиление громкости не поддерживается в этом браузере');
             return;
         }
         resumeAudioContext();
         isBoosted = !isBoosted;
         btnVolumeBoost.classList.toggle('active', isBoosted);
         applyBoostGain();
-        showToast(isBoosted ? 'Усиление звука включено (+6 дБ)' : 'Усиление звука выключено');
+        showToast(isBoosted ? 'Усиление громкости включено (+6 дБ)' : 'Усиление громкости выключено');
     });
 
     // =========================================================
@@ -2586,6 +2821,7 @@ void main() {
             switchSettingsView(view || settingsMain);
         } else {
             scheduleIdle();
+            leaveSheetMode();
         }
     }
 
@@ -2629,6 +2865,14 @@ void main() {
 
     settingsMenu.querySelectorAll('.back-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
+            if (settingsFromSheet) {
+                settingsMenu.classList.add('hidden');
+                if (btnSettings) btnSettings.classList.remove('active');
+                if (settingsGearIcon) settingsGearIcon.classList.remove('gear-open');
+                leaveSheetMode();
+                openShareSheet(true);
+                return;
+            }
             const target = document.getElementById(btn.getAttribute('data-back'));
             if (target) switchSettingsView(target);
         });
@@ -2677,7 +2921,9 @@ void main() {
                 return;
             }
             if (!settingsMenu.classList.contains('hidden')) {
+                const backToSheet = settingsFromSheet;
                 openSettingsMenu(false);
+                if (backToSheet) openShareSheet(true);
                 e.preventDefault();
             }
             return;
