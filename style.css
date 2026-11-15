@@ -1461,7 +1461,7 @@ input:checked + .slider-toggle:before {
 }
 
 .speed-scale span:first-child { left: 0; transform: translateX(0); }
-.speed-scale span:nth-child(2) { left: 42.86%; } /* exact position of 1x on a 0.25–2 range */
+.speed-scale span:nth-child(2) { left: 50%; }      /* 1x is dead center on a symmetric 0.25–2 scale */
 .speed-scale span:last-child { left: 100%; transform: translateX(-100%); }
 
 .speed-presets {

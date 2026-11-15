@@ -1261,15 +1261,25 @@ document.addEventListener('DOMContentLoaded', () => {
         return Math.min(2, Math.max(0.25, Math.round(speed * 100) / 100));
     }
 
+    /* Slider position <-> rate mapping. The slider is symmetric around 1x
+       (0.25 at far left, 1x dead center, 2x at far right): left half covers
+       0.25..1, right half covers 1..2. */
+    function sliderPosToRate(p) {
+        p = Math.min(1, Math.max(0, p));
+        return p <= 0.5 ? 0.25 + 0.75 * (p / 0.5) : 1 + 1 * ((p - 0.5) / 0.5);
+    }
+
+    function rateToSliderPos(r) {
+        r = clampSpeed(r);
+        return r <= 1 ? 0.5 * (r - 0.25) / 0.75 : 0.5 + 0.5 * (r - 1);
+    }
+
     function speedBigValue(speed) {
         return `${parseFloat(speed.toFixed(2))}x`;
     }
 
     function paintSpeedSlider() {
-        const min = parseFloat(speedSlider.min);
-        const max = parseFloat(speedSlider.max);
-        const pct = ((playbackSpeed - min) / (max - min)) * 100;
-        speedSlider.style.setProperty('--fill', pct + '%');
+        speedSlider.style.setProperty('--fill', (rateToSliderPos(playbackSpeed) * 100) + '%');
     }
 
     function setPlaybackSpeed(speed) {
@@ -1277,7 +1287,9 @@ document.addEventListener('DOMContentLoaded', () => {
         video.defaultPlaybackRate = playbackSpeed;
         video.playbackRate = playbackSpeed;
         setChevronValue(currentSpeedLabel, speedDisplayName(playbackSpeed));
-        speedSlider.value = String(playbackSpeed);
+        speedSlider.value = String(rateToSliderPos(playbackSpeed));
+        speedSlider.setAttribute('aria-valuenow', String(playbackSpeed));
+        speedSlider.setAttribute('aria-valuetext', speedBigValue(playbackSpeed));
         speedSliderValue.textContent = speedBigValue(playbackSpeed);
         speedValueHint.textContent = playbackSpeed === 1 ? 'Нормальная скорость' : (playbackSpeed < 1 ? 'Замедление' : 'Ускорение');
         speedPresets.querySelectorAll('.speed-pill').forEach((pill) => {
@@ -1288,7 +1300,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // The menu stays open while dragging — fine-tune like on YouTube.
     speedSlider.addEventListener('input', () => {
-        setPlaybackSpeed(parseFloat(speedSlider.value));
+        setPlaybackSpeed(sliderPosToRate(parseFloat(speedSlider.value)));
+    });
+
+    // Keyboard support with real 0.05 steps (native step is finer).
+    speedSlider.addEventListener('keydown', (e) => {
+        const dir = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 };
+        if (e.key in dir) {
+            e.preventDefault();
+            setPlaybackSpeed(playbackSpeed + dir[e.key] * 0.05);
+            return;
+        }
+        if (e.key === 'Home') { e.preventDefault(); setPlaybackSpeed(0.25); return; }
+        if (e.key === 'End') { e.preventDefault(); setPlaybackSpeed(2); }
     });
 
     speedDecrease.addEventListener('click', () => setPlaybackSpeed(playbackSpeed - 0.05));
