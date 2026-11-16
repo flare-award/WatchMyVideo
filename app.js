@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const seekPreview = $('seek-preview');
     const seekPreviewCanvas = $('seek-preview-canvas');
     const ambientCanvas = $('ambient-canvas');
+    const ambientHalo = $('ambient-halo');
     const qualityCanvas = $('quality-canvas');
     let qualityCtx = null;   // created lazily, only for the non-WebGL fallback
 
@@ -178,8 +179,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let gainNode = null;
 
     // Quality management — the site renders low tiers itself via a canvas
+    const QUALITY_LADDER = [144, 240, 360, 480, 720, 1080, 1440, 2160];  // standard tiers only
     const QUALITY_ARTIFICIAL_DOWN = [144, 240, 360, 480, 720, 1080, 1440]; // below-source rungs we synthesize
-    const QUALITY_ARTIFICIAL_UP = [720, 1080, 1440, 2160];                 // upscale tiers offered when missing
+    const QUALITY_ARTIFICIAL_UP = [1440, 2160];                            // upscale tiers offered when missing
     let availableQualities = [{ key: 'original', label: '0', height: 0, original: true }];
     let currentQualityKey = 'original';
     let qualityProxyOn = false;
@@ -331,9 +333,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     //  Idle manager — hide chrome when the mouse goes quiet
     // =========================================================
+    // tkShareSheet is declared later (share-sheet section) — reference lazily.
+    const isShareSheetOpen = () => {
+        const el = document.getElementById('tk-share-sheet');
+        return !!(el && el.classList.contains('open'));
+    };
+
     function isOverlayOpen() {
         return !settingsMenu.classList.contains('hidden') ||
-               document.body.classList.contains('tk-drawer-open');
+               document.body.classList.contains('tk-drawer-open') ||
+               isShareSheetOpen();
     }
 
     function clearIdle() {
@@ -349,7 +358,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         idleTimer = setTimeout(() => {
-            if (!isOverlayOpen() && !isDraggingProgress && !video.paused && !video.ended) {
+            if (!isOverlayOpen() && !isDraggingProgress) {
                 document.body.classList.add('idle');
             }
         }, IDLE_DELAY_MS);
@@ -374,21 +383,25 @@ document.addEventListener('DOMContentLoaded', () => {
     playerWrapper.addEventListener('mouseenter', () => pokeUI());
     playerWrapper.addEventListener('mouseleave', () => {
         // Cursor left the player area — hide the chrome right away,
-        // but only while the video is actually playing.
+        // even when paused. The settings menu stays open.
         clearIdle();
-        closeSettingsMenuIfOpen();
-        if (!video.paused && !video.ended) {
-            document.body.classList.add('idle');
+        document.body.classList.add('idle');
+    });
+    // Only un-hide the chrome when the pointer is actually over the player
+    // (or something floating inside/above it — menus, sheets, seek preview).
+    // Moving over the info area below/beside the video must NOT bring it back.
+    const CHROME_HOVER_ZONE = '#player-wrapper, .settings-menu, .tk-share-sheet, .tk-sheet-backdrop, .seek-preview, .app-header';
+    document.addEventListener('mousemove', (e) => {
+        if (e.target instanceof Element && e.target.closest(CHROME_HOVER_ZONE)) {
+            pokeUI();
         }
-    });
-    ['mousemove', 'wheel'].forEach((evt) => {
-        document.addEventListener(evt, pokeUI, { passive: true });
-    });
+    }, { passive: true });
+    document.addEventListener('wheel', pokeUI, { passive: true });
     ['mousedown', 'touchstart', 'keydown'].forEach((evt) => {
         document.addEventListener(evt, pokeUI, { passive: true });
     });
     document.addEventListener('mouseleave', () => {
-        if (!video.paused && !isOverlayOpen()) {
+        if (!isOverlayOpen()) {
             document.body.classList.add('idle');
         }
     });
@@ -410,7 +423,7 @@ document.addEventListener('DOMContentLoaded', () => {
             closeCommentsDrawer();
             closeShareSheet();
         }
-        applyLoopForMode(mode);
+        applyLoopForMode();
         if (persist) storageSet(MODE_KEY, mode);
         pokeUI();
     }
@@ -457,6 +470,13 @@ document.addEventListener('DOMContentLoaded', () => {
         playerWrapper.classList.toggle('audio-mode', currentIsAudio);
         document.body.classList.add('video-active');
         document.body.classList.toggle('is-audio', currentIsAudio);
+        // A fresh video must never inherit the previous progress state.
+        progressPlayed.style.width = '0%';
+        progressBuffered.style.width = '0%';
+        progressScrubber.style.left = '0%';
+        progressContainer.setAttribute('aria-valuenow', '0');
+        currentTimeEl.textContent = '0:00';
+        durationEl.textContent = '0:00';
         if (audioCover) {
             if (currentIsAudio) {
                 if (opts.coverUrl) {
@@ -477,7 +497,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Autoplay only when the switch is on — otherwise wait for a click.
-        applyLoopForMode(currentMode);
+        applyLoopForMode();
         if (autoplayOn) {
             // Try immediately, and again once data is ready — the browser
             // decides whether the gesture/autoplay policy allows it.
@@ -976,55 +996,31 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast(next ? 'Вы подписались' : 'Вы отписались');
     }
 
-    // Share / Download — real behaviour, no fake toasts.
-    function shareCurrentVideo() {
-        const title = stripExtension(currentFileName) || currentFileName || 'WatchMyVideo';
-        try {
-            if (navigator.share) {
-                navigator.share({ title, text: title }).catch((err) => {
-                    // AbortError = user closed the share UI — not an error.
-                    if (err && err.name !== 'AbortError') copyFallback(title);
-                });
-                return;
-            }
-        } catch (_) { /* fall through to clipboard */ }
-        copyFallback(title);
-    }
-
-    function copyFallback(text) {
+    // Share / Download — requested inert stubs («заглушки»)
+    function shareStub() {
         try {
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(text).then(
-                    () => showToast('Название скопировано в буфер обмена'),
-                    () => showToast('Не удалось скопировать')
-                );
-                return;
+                navigator.clipboard.writeText(window.location.href).catch(() => {});
             }
-        } catch (_) { /* clipboard blocked — fall through */ }
-        showToast('Поделиться не удалось');
+        } catch (_) { /* clipboard unavailable — the toast still confirms */ }
+        showToast('Ссылка скопирована');
     }
 
-    function downloadCurrentVideo() {
-        if (!currentFileUrl) { showToast('Сначала откройте видео'); return; }
-        const a = document.createElement('a');
-        a.href = currentFileUrl;
-        a.download = currentFileName || 'video';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        showToast('Скачивание началось');
+    function downloadStub() {
+        showToast('Скачивание начнётся…', 1600);
+        setTimeout(() => showToast('Загрузка завершена', 1800), 1700);
     }
 
     btnLike.addEventListener('click', toggleLike);
     btnDislike.addEventListener('click', toggleDislike);
     tkLike.addEventListener('click', toggleLike);
-    btnShareYt.addEventListener('click', shareCurrentVideo);
+    btnShareYt.addEventListener('click', shareStub);
     btnSave.addEventListener('click', toggleSave);
     tkSave.addEventListener('click', toggleSave);
     btnSubscribe.addEventListener('click', toggleSubscribe);
     tkFollow.addEventListener('click', toggleSubscribe);
 
-    btnDownload.addEventListener('click', downloadCurrentVideo);
+    btnDownload.addEventListener('click', downloadStub);
 
     // =========================================================
     //  Comments (YouTube section + TikTok drawer, shared storage)
@@ -1249,7 +1245,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updatePlayPauseButton(playing) {
         if (video.ended) {
-            playPauseIcon.className = 'fa-solid fa-repeat';
+            playPauseIcon.className = 'fa-solid fa-rotate-right';
             btnPlayPause.setAttribute('data-tooltip', 'Смотреть снова (k)');
             btnPlayPause.setAttribute('aria-label', 'Смотреть снова');
             clearTimeout(idleTimer);
@@ -1287,8 +1283,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     video.addEventListener('pause', () => {
         updatePlayPauseButton(false);
-        // Keep the chrome visible while paused (YouTube behaviour)
-        document.body.classList.remove('idle');
         if (!video.ended) flashCenterIcon('fa-solid fa-pause');
     });
 
@@ -1302,11 +1296,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (autoplayOn) video.play().catch(() => {});
             return;
         }
-        document.body.classList.remove('idle');
         if (!video.loop) {
             playerWrapper.classList.add('video-ended');
             replayOverlay.classList.remove('hidden');
             updatePlayPauseButton(false);
+            // Theater end-of-video: hide the chrome, like YouTube.
+            scheduleIdle();
         }
     });
 
@@ -1575,11 +1570,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // =========================================================
-    //  Loop — repeat button next to play; per-mode memory
+    //  Loop — repeat button + TikTok sheet toggle, one shared state
+    //  across every style (off by default)
     // =========================================================
-    const loopModeByMode = { player: false, youtube: false, tiktok: true };
-    function applyLoopForMode(mode) {
-        isLooping = !!loopModeByMode[mode];
+    isLooping = false;
+    function applyLoopForMode() {
         video.loop = isLooping;
         if (btnLoopToggle) {
             btnLoopToggle.classList.toggle('active', isLooping);
@@ -1592,9 +1587,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     function toggleLoop() {
-        loopModeByMode[currentMode] = !loopModeByMode[currentMode];
-        applyLoopForMode(currentMode);
-        showToast(isLooping ? 'Повтор включён' : 'Повтор выключен', 1600);
+        isLooping = !isLooping;
+        applyLoopForMode();
     }
     if (btnLoopToggle) btnLoopToggle.addEventListener('click', toggleLoop);
 
@@ -1785,35 +1779,57 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     let ambientTimer = null;
 
+    // Size/position the page-level halo around the player (YouTube glows
+    // from behind the player's edges — it does not wash the whole page).
+    function positionAmbientHalo() {
+        if (!ambientHalo || !playerWrapper) return;
+        const parent = ambientHalo.parentElement;
+        if (!parent) return;
+        const wrap = playerWrapper.getBoundingClientRect();
+        const col = parent.getBoundingClientRect();
+        const padX = Math.round(wrap.width * 0.11);
+        const padTop = Math.round(wrap.height * 0.16);
+        const padBottom = Math.round(wrap.height * 0.18);
+        ambientHalo.style.left = (wrap.left - col.left - padX) + 'px';
+        ambientHalo.style.top = (wrap.top - col.top - padTop) + 'px';
+        ambientHalo.style.width = (wrap.width + padX * 2) + 'px';
+        ambientHalo.style.height = (wrap.height + padTop + padBottom) + 'px';
+    }
+
     function paintAmbientFrame() {
         try {
-            if (!ambientCanvas) return;
-            const W = 144, H = 81; // tiny — CSS blur + upscaling does the rest
-            if (ambientCanvas.width !== W) {
-                ambientCanvas.width = W;
-                ambientCanvas.height = H;
-            }
-            const ctx = ambientCanvas.getContext('2d');
-            if (currentIsAudio) {
-                // Static soft radial in the track's own hue (audio has no frames)
-                const hue = hueFromString(currentFileName || 'audio');
-                const g = ctx.createRadialGradient(W / 2, H / 2, 6, W / 2, H / 2, W * 0.75);
-                g.addColorStop(0, `hsl(${hue} 62% 48%)`);
-                g.addColorStop(0.55, `hsl(${(hue + 32) % 360} 52% 26%)`);
-                g.addColorStop(1, '#050505');
-                ctx.fillStyle = g;
-                ctx.fillRect(0, 0, W, H);
-                return;
-            }
-            const sw = video.videoWidth, sh = video.videoHeight;
-            if (!sw || !sh) return;
-            // Cover-fit: same colors, pushed all the way into the edges
-            const scale = Math.max(W / sw, H / sh);
-            const dw = sw * scale, dh = sh * scale;
-            ctx.clearRect(0, 0, W, H);
-            ctx.drawImage(video, (W - dw) / 2, (H - dh) / 2, dw, dh);
+            if (!ambientCanvas && !ambientHalo) return;
+            const drawInto = (canvas, withGradient) => {
+                if (!canvas) return;
+                const W = 144, H = 81; // tiny — CSS blur + upscaling does the rest
+                if (canvas.width !== W) { canvas.width = W; canvas.height = H; }
+                const ctx = canvas.getContext('2d');
+                if (currentIsAudio) {
+                    // Static soft radial in the track's own hue (audio has no frames)
+                    const hue = hueFromString(currentFileName || 'audio');
+                    const g = ctx.createRadialGradient(W / 2, H / 2, 6, W / 2, H / 2, W * 0.75);
+                    g.addColorStop(0, `hsl(${hue} 62% 48%)`);
+                    g.addColorStop(0.55, `hsl(${(hue + 32) % 360} 52% 26%)`);
+                    g.addColorStop(1, '#050505');
+                    ctx.fillStyle = g;
+                    ctx.fillRect(0, 0, W, H);
+                    return;
+                }
+                const sw = video.videoWidth, sh = video.videoHeight;
+                if (!sw || !sh) return;
+                // Cover-fit: same colors, pushed all the way into the edges
+                const scale = Math.max(W / sw, H / sh);
+                const dw = sw * scale, dh = sh * scale;
+                ctx.clearRect(0, 0, W, H);
+                ctx.drawImage(video, (W - dw) / 2, (H - dh) / 2, dw, dh);
+            };
+            positionAmbientHalo();
+            drawInto(ambientCanvas);
+            drawInto(ambientHalo);
         } catch (_) { /* frame not ready — keep the previous paint */ }
     }
+
+    window.addEventListener('resize', () => { if (studioLight) positionAmbientHalo(); });
 
     function applyStudioLight() {
         document.body.classList.toggle('studio-light', studioLight);
@@ -1838,7 +1854,6 @@ document.addEventListener('DOMContentLoaded', () => {
             studioLight = e.target.checked;
             storageSet('wmv_studio_light', studioLight ? '1' : '0');
             applyStudioLight();
-            showToast(studioLight ? 'Профессиональное освещение включено' : 'Профессиональное освещение выключено', 1500);
         });
     }
 
@@ -1927,18 +1942,15 @@ document.addEventListener('DOMContentLoaded', () => {
             sleepMode = 'off';
             sleepMinutesChosen = 0;
             sleepDeadline = 0;
-            showToast('Автовыключение выключено', 1500);
         } else if (value === 'end') {
             sleepMode = 'end';
             sleepMinutesChosen = 0;
             sleepDeadline = 0;
-            showToast('Видео остановится в конце', 1500);
         } else {
             sleepMode = 'minutes';
             sleepMinutesChosen = value;
             sleepDeadline = Date.now() + value * 60000;
             sleepInterval = setInterval(tickSleep, 1000);
-            showToast(`Видео остановится через ${value} мин`, 1800);
         }
         paintSleepLabel();
         renderSleepOptions();
@@ -2033,11 +2045,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (tkSheetOpenQuality) tkSheetOpenQuality.addEventListener('click', stopProp(() => openSettingsViewFromSheet(settingsQuality)));
     const tkSheetShareSystem = $('tk-share-system');
     const tkSheetShareDownload = $('tk-share-download');
-    const tkSheetShareCopy = $('tk-share-copy');
     const sheetAction = (fn) => stopProp(() => { openShareSheet(false); fn(); });
-    if (tkSheetShareSystem) tkSheetShareSystem.addEventListener('click', sheetAction(shareCurrentVideo));
-    if (tkSheetShareDownload) tkSheetShareDownload.addEventListener('click', sheetAction(downloadCurrentVideo));
-    if (tkSheetShareCopy) tkSheetShareCopy.addEventListener('click', sheetAction(() => copyFallback(stripExtension(currentFileName) || currentFileName || 'WatchMyVideo')));
+    if (tkSheetShareSystem) tkSheetShareSystem.addEventListener('click', sheetAction(shareStub));
+    if (tkSheetShareDownload) tkSheetShareDownload.addEventListener('click', sheetAction(downloadStub));
     if (tkStudioLight) tkStudioLight.addEventListener('click', (e) => e.stopPropagation());
     if (tkLoopSheetBtn) tkLoopSheetBtn.addEventListener('click', (e) => e.stopPropagation());
     if (tkStudioLight) {
@@ -2070,7 +2080,6 @@ document.addEventListener('DOMContentLoaded', () => {
             autoplayOn = !autoplayOn;
             storageSet('wmv_autoplay', autoplayOn ? '1' : '0');
             paintAutoplay();
-            showToast(autoplayOn ? 'Автовоспроизведение включено' : 'Автовоспроизведение выключено', 1600);
         });
     }
 
@@ -2109,7 +2118,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
-                showToast('Снимок сохранён');
             } catch (_) {
                 showToast('Не удалось сохранить снимок');
             }
@@ -2203,7 +2211,6 @@ document.addEventListener('DOMContentLoaded', () => {
             seekPreviewEnabled = e.target.checked;
             storageSet('wmv_seek_preview', seekPreviewEnabled ? '1' : '0');
             if (!seekPreviewEnabled) hideSeekPreview();
-            showToast(seekPreviewEnabled ? 'Мини-кадр при перемотке включён' : 'Мини-кадр при перемотке выключен', 1500);
         });
     }
 
@@ -2225,7 +2232,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function qualityLabel(height) {
         const h = Number(height) || 0;
         if (!h) return 'Авто';
-        return knownFps ? `${h}p${knownFps}` : `${h}p`;
+        // fps is always shown; if the real rate is not measurable, 60 is assumed
+        return `${h}p${knownFps || 60}`;
     }
 
     function resetFpsSampler() {
@@ -2264,6 +2272,14 @@ document.addEventListener('DOMContentLoaded', () => {
         video.requestVideoFrameCallback(step);
     }
 
+    function masterTierFor(minDim) {
+        let best = null;
+        for (const t of QUALITY_LADDER) {
+            if (minDim * 1.05 >= t) best = t;
+        }
+        return best || Math.max(2, Math.floor(minDim));
+    }
+
     function computeQualities() {
         stopQualityProxy();
         const vw = video.videoWidth || 0;
@@ -2274,9 +2290,8 @@ document.addEventListener('DOMContentLoaded', () => {
             currentQualityKey = 'original';
             return;
         }
-        // The original tier keeps the true source line count — never snap a
-        // 540-line video down to the 480 rung: the user must see honest numbers.
-        const orig = Math.max(2, Math.round(minDim));
+        // Snap the source to the standard ladder (a 960-class source reads 720p, etc.)
+        const orig = masterTierFor(minDim);
         const list = [{ key: 'original', label: String(orig), height: orig, original: true }];
         const seen = new Set(['original']);
         // Rungs below the source (downscale).
@@ -2310,6 +2325,10 @@ document.addEventListener('DOMContentLoaded', () => {
             opt.setAttribute('tabindex', '0');
             const main = document.createElement('span');
             main.className = 'quality-main';
+            const name = document.createElement('span');
+            name.className = 'quality-name';
+            name.textContent = qualityLabel(q.height);
+            main.appendChild(name);
             const overline = qualityOverline(q.height);
             if (overline) {
                 const over = document.createElement('span');
@@ -2317,10 +2336,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 over.textContent = overline;
                 main.appendChild(over);
             }
-            const name = document.createElement('span');
-            name.className = 'quality-name';
-            name.textContent = qualityLabel(q.height);
-            main.appendChild(name);
             opt.appendChild(main);
             opt.addEventListener('click', () => {
                 switchQuality(q.key);
@@ -2771,7 +2786,6 @@ void main() {
         isBoosted = !isBoosted;
         btnVolumeBoost.classList.toggle('active', isBoosted);
         applyBoostGain();
-        showToast(isBoosted ? 'Усиление громкости включено (+6 дБ)' : 'Усиление громкости выключено');
     });
 
     // =========================================================
