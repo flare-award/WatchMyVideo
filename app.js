@@ -366,6 +366,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function pokeUI() {
         clearIdle();
+        clearTimeout(chromeHideTimer);
         document.body.classList.remove('idle');
         scheduleIdle();
     }
@@ -381,18 +382,46 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     playerWrapper.addEventListener('mouseenter', () => pokeUI());
-    playerWrapper.addEventListener('mouseleave', () => {
-        // Cursor left the player area — hide the chrome right away,
-        // even when paused. The settings menu stays open.
+    let chromeHideTimer = 0;
+    // Cursor left the player area — hide the chrome shortly after,
+    // even when paused. The settings menu stays open. Moving straight onto
+    // the floating header / menus cancels the hide (they're part of the UI).
+    function scheduleChromeHide(delay = 160) {
+        clearTimeout(chromeHideTimer);
+        chromeHideTimer = window.setTimeout(() => {
+            if (!isOverlayOpen() && !isDraggingProgress) {
+                document.body.classList.add('idle');
+            }
+        }, delay);
+    }
+    playerWrapper.addEventListener('mouseleave', (e) => {
         clearIdle();
-        document.body.classList.add('idle');
+        const t = e.relatedTarget;
+        if (t instanceof Element && t.closest('.app-header, .settings-menu, .tk-share-sheet, .seek-preview')) {
+            pokeUI();
+            return;
+        }
+        scheduleChromeHide(160);
     });
     // Only un-hide the chrome when the pointer is actually over the player
     // (or something floating inside/above it — menus, sheets, seek preview).
     // Moving over the info area below/beside the video must NOT bring it back.
     const CHROME_HOVER_ZONE = '#player-wrapper, .settings-menu, .tk-share-sheet, .tk-sheet-backdrop, .seek-preview, .app-header';
+    const appHeaderEl = document.getElementById('app-header');
+    const headerBand = () => {
+        if (!appHeaderEl) return null;
+        const r = appHeaderEl.getBoundingClientRect();
+        return { left: r.left, right: r.right, bottom: r.bottom };
+    };
     document.addEventListener('mousemove', (e) => {
         if (e.target instanceof Element && e.target.closest(CHROME_HOVER_ZONE)) {
+            pokeUI();
+            return;
+        }
+        // Header is click-through while idle (opacity 0) — reveal the chrome
+        // as soon as the pointer enters its band, wherever along the width.
+        const hb = headerBand();
+        if (hb && e.clientY <= hb.bottom && e.clientX >= hb.left && e.clientX <= hb.right) {
             pokeUI();
         }
     }, { passive: true });
@@ -2385,22 +2414,66 @@ uniform float uSharp;
 uniform float uContrast;
 uniform float uSat;
 uniform float uWarm;
+uniform float uDegrade;
+uniform float uBlockPx;
+uniform float uQuant;
+uniform float uNoise;
+uniform float uChroma;
+uniform float uBlur;
+uniform float uTime;
+uniform vec2 uResolution;
 varying vec2 vUv;
+float hash21(vec2 p) {
+    p = fract(p * vec2(234.34, 435.345));
+    p += dot(p, p + 34.23);
+    return fract(p.x * p.y);
+}
 void main() {
     vec3 c = texture2D(uTex, vUv).rgb;
-    vec3 avg = (
-        texture2D(uTex, vUv + vec2(0.0, uTexel.y)).rgb +
-        texture2D(uTex, vUv - vec2(0.0, uTexel.y)).rgb +
-        texture2D(uTex, vUv + vec2(uTexel.x, 0.0)).rgb +
-        texture2D(uTex, vUv - vec2(uTexel.x, 0.0)).rgb
-    ) * 0.25;
-    vec3 sharp = clamp(c + (c - avg) * uSharp, 0.0, 1.0);
-    sharp = clamp((sharp - 0.5) * uContrast + 0.5, 0.0, 1.0);
-    float luma = dot(sharp, vec3(0.2126, 0.7152, 0.0722));
-    sharp = clamp(mix(vec3(luma), sharp, uSat), 0.0, 1.0);
-    sharp.r = clamp(sharp.r * (1.0 + uWarm * 0.05), 0.0, 1.0);
-    sharp.b = clamp(sharp.b * (1.0 - uWarm * 0.045), 0.0, 1.0);
-    gl_FragColor = vec4(sharp, 1.0);
+    vec3 outc;
+    if (uDegrade > 0.5) {
+        // Low-bitrate emulation: macroblocks, bleeding chroma, mush, banding, grain
+        vec2 grid = max(vec2(1.0), floor(uResolution / uBlockPx));
+        vec2 bid = floor(vUv * grid);
+        vec2 bUv = (bid + 0.5) / grid;
+        vec2 bStep = (uBlockPx * 0.28) / uResolution;
+        vec3 blk = (
+            texture2D(uTex, bUv + vec2(bStep.x, 0.0)).rgb +
+            texture2D(uTex, bUv - vec2(bStep.x, 0.0)).rgb +
+            texture2D(uTex, bUv + vec2(0.0, bStep.y)).rgb +
+            texture2D(uTex, bUv - vec2(0.0, bStep.y)).rgb
+        ) * 0.25;
+        float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
+        float bl = dot(blk, vec3(0.2126, 0.7152, 0.0722));
+        // chroma stored at a fraction of luma resolution — soft, smeared color
+        vec3 chroma = blk - vec3(bl);
+        outc = vec3(luma) + chroma * (1.0 - uChroma);
+        // global mush from a very low bitrate
+        outc = mix(outc, blk, uBlur);
+        // mosquito ringing on hard edges
+        float edge = dot(abs(c - blk), vec3(0.3333));
+        outc += edge * 1.15 * (blk - vec3(0.5));
+        // quantization banding
+        outc = floor(outc * uQuant + 0.5) / uQuant;
+        // animated grain
+        float n = hash21(floor(vUv * uResolution) + vec2(fract(uTime * 9.0), fract(uTime * 13.0)) * 517.0);
+        outc += (n - 0.5) * uNoise;
+        outc = clamp(outc, 0.0, 1.0);
+    } else {
+        vec3 avg = (
+            texture2D(uTex, vUv + vec2(0.0, uTexel.y)).rgb +
+            texture2D(uTex, vUv - vec2(0.0, uTexel.y)).rgb +
+            texture2D(uTex, vUv + vec2(uTexel.x, 0.0)).rgb +
+            texture2D(uTex, vUv - vec2(uTexel.x, 0.0)).rgb
+        ) * 0.25;
+        outc = clamp(c + (c - avg) * uSharp, 0.0, 1.0);
+    }
+    outc = clamp((outc - 0.5) * uContrast + 0.5, 0.0, 1.0);
+    float lu = dot(outc, vec3(0.2126, 0.7152, 0.0722));
+    outc = clamp(mix(vec3(lu), outc, uSat), 0.0, 1.0);
+    outc.r = clamp(outc.r * (1.0 + uWarm * 0.05), 0.0, 1.0);
+    outc.b = clamp(outc.b * (1.0 - uWarm * 0.045), 0.0, 1.0);
+    gl_FragColor = vec4(outc, 1.0);
 }`;
         const compile = (type, source) => {
             const shader = gl.createShader(type);
@@ -2444,6 +2517,14 @@ void main() {
             uContrast: gl.getUniformLocation(program, 'uContrast'),
             uSat: gl.getUniformLocation(program, 'uSat'),
             uWarm: gl.getUniformLocation(program, 'uWarm'),
+            uDegrade: gl.getUniformLocation(program, 'uDegrade'),
+            uBlockPx: gl.getUniformLocation(program, 'uBlockPx'),
+            uQuant: gl.getUniformLocation(program, 'uQuant'),
+            uNoise: gl.getUniformLocation(program, 'uNoise'),
+            uChroma: gl.getUniformLocation(program, 'uChroma'),
+            uBlur: gl.getUniformLocation(program, 'uBlur'),
+            uTime: gl.getUniformLocation(program, 'uTime'),
+            uResolution: gl.getUniformLocation(program, 'uResolution'),
         };
         glCtx = gl;
         glProgram = program;
@@ -2458,6 +2539,30 @@ void main() {
         return { sharp: 0, contrast: 1, sat: 1, warm: 0 };
     }
 
+    // Artificial low rungs: emulate a real low-bitrate YouTube/Twitch stream —
+    // mushy detail, macroblocks, bleeding chroma, banding and animated grain —
+    // instead of a clean resample that looks fake.
+    function degradeParamsForHeight(targetH) {
+        if (targetH <= 150) return { block: 15, blur: 0.88, quant: 18, noise: 0.06, chroma: 0.85, sat: 0.78, contrast: 0.94, sharp: 0, warm: 0 };
+        if (targetH <= 260) return { block: 12, blur: 0.66, quant: 26, noise: 0.05, chroma: 0.72, sat: 0.84, contrast: 0.955, sharp: 0, warm: 0 };
+        if (targetH <= 380) return { block: 9,  blur: 0.44, quant: 34, noise: 0.038, chroma: 0.55, sat: 0.89, contrast: 0.965, sharp: 0, warm: 0 };
+        return { block: 8, blur: 0.24, quant: 46, noise: 0.028, chroma: 0.4, sat: 0.93, contrast: 0.98, sharp: 0, warm: 0 };
+    }
+
+    const degradeState = { active: false, params: null };
+    const blockCanvas = document.createElement('canvas');
+    const noiseTile = document.createElement('canvas');
+    noiseTile.width = 96; noiseTile.height = 96;
+    (function makeNoiseTile() {
+        const nctx = noiseTile.getContext('2d');
+        const img = nctx.createImageData(96, 96);
+        for (let i = 0; i < img.data.length; i += 4) {
+            const v = 96 + Math.floor(Math.random() * 96);
+            img.data[i] = v; img.data[i + 1] = v; img.data[i + 2] = v; img.data[i + 3] = 255;
+        }
+        nctx.putImageData(img, 0, 0);
+    })();
+
     function drawQualityFrameGL() {
         const gl = glCtx;
         qualityCanvas.style.filter = 'none';
@@ -2469,7 +2574,8 @@ void main() {
             return; // frame not decodable yet
         }
         gl.viewport(0, 0, qualityCanvas.width, qualityCanvas.height);
-        const p = enhanceParamsForHeight(Math.min(qualityCanvas.width, qualityCanvas.height));
+        const minDim = Math.min(qualityCanvas.width, qualityCanvas.height);
+        const p = degradeState.active ? degradeState.params : enhanceParamsForHeight(minDim);
         // Sample the LINEARLY upscaled texture in OUTPUT space — this is the
         // correct place to do an unsharp mask (blur = average of interpolated neighbours)
         gl.uniform2f(glLocations.uTexel, 1 / Math.max(2, qualityCanvas.width), 1 / Math.max(2, qualityCanvas.height));
@@ -2477,17 +2583,53 @@ void main() {
         gl.uniform1f(glLocations.uContrast, p.contrast);
         gl.uniform1f(glLocations.uSat, p.sat);
         gl.uniform1f(glLocations.uWarm, p.warm);
+        gl.uniform1f(glLocations.uDegrade, degradeState.active ? 1 : 0);
+        gl.uniform1f(glLocations.uBlockPx, p.block || 8);
+        gl.uniform1f(glLocations.uQuant, p.quant || 48);
+        gl.uniform1f(glLocations.uNoise, p.noise || 0);
+        gl.uniform1f(glLocations.uChroma, p.chroma || 0);
+        gl.uniform1f(glLocations.uBlur, p.blur || 0);
+        gl.uniform1f(glLocations.uTime, (performance.now() % 100000) / 1000);
+        gl.uniform2f(glLocations.uResolution, qualityCanvas.width, qualityCanvas.height);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
 
     function drawQualityFrame2d() {
         if (!qualityCtx) qualityCtx = qualityCanvas.getContext('2d', { alpha: false });
         if (!qualityCtx) return;
+        const w = qualityCanvas.width, h = qualityCanvas.height;
+        const minDim = Math.min(w, h);
+        if (degradeState.active && degradeState.params) {
+            const p = degradeState.params;
+            // Soft mush first (low-bitrate streams aren't crisp)
+            qualityCtx.filter = `blur(${Math.min(1.3, p.blur)}px) saturate(${p.sat}) contrast(${p.contrast})`;
+            qualityCtx.imageSmoothingEnabled = true;
+            qualityCtx.imageSmoothingQuality = 'high';
+            qualityCtx.drawImage(video, 0, 0, w, h);
+            // Macroblocks: collapse to a coarse grid, then back up with soft edges
+            const bw = Math.max(2, Math.round(w / p.block));
+            const bh = Math.max(2, Math.round(h / p.block));
+            blockCanvas.width = bw; blockCanvas.height = bh;
+            const bctx = blockCanvas.getContext('2d', { alpha: false });
+            bctx.imageSmoothingEnabled = true;
+            bctx.filter = 'none';
+            bctx.drawImage(qualityCanvas, 0, 0, bw, bh);
+            qualityCtx.filter = 'none';
+            qualityCtx.drawImage(blockCanvas, 0, 0, w, h);
+            // Grain
+            qualityCtx.globalAlpha = Math.min(0.5, p.noise * 2.2);
+            const pat = qualityCtx.createPattern(noiseTile, 'repeat');
+            if (pat) { qualityCtx.fillStyle = pat; qualityCtx.fillRect(0, 0, w, h); }
+            qualityCtx.globalAlpha = 1;
+            qualityCanvas.style.filter = 'none';
+            return;
+        }
+        qualityCtx.filter = 'none';
         qualityCtx.imageSmoothingEnabled = true;
         qualityCtx.imageSmoothingQuality = 'high';
-        qualityCtx.drawImage(video, 0, 0, qualityCanvas.width, qualityCanvas.height);
+        qualityCtx.drawImage(video, 0, 0, w, h);
         // No WebGL — lean on the browser's SVG convolution for a real sharpen
-        const p = enhanceParamsForHeight(Math.min(qualityCanvas.width, qualityCanvas.height));
+        const p = enhanceParamsForHeight(minDim);
         qualityCanvas.style.filter = p.sharp > 0
             ? `url(#${p.sharp >= 0.75 ? 'svg-sharpen-strong' : 'svg-sharpen'}) contrast(${p.contrast}) saturate(${p.sat})`
             : 'none';
@@ -2505,6 +2647,8 @@ void main() {
         stopQualityProxy();
         const minDim = Math.min(video.videoWidth, video.videoHeight);
         const scale = height / minDim;
+        degradeState.active = scale < 1;
+        degradeState.params = degradeState.active ? degradeParamsForHeight(height) : null;
         qualityCanvas.width = Math.max(2, Math.round(video.videoWidth * scale));
         qualityCanvas.height = Math.max(2, Math.round(video.videoHeight * scale));
         qualityCanvasHeight = height;
@@ -2527,11 +2671,19 @@ void main() {
             };
             requestAnimationFrame(raf);
         }
+        // Frame pumps for the moments rVFC never fires (ended/seek/no-frame-yet):
+        // paint once the video can actually deliver a frame.
         drawQualityFrame();
     }
 
+    const paintQualityFrameOnce = () => { if (qualityProxyOn) drawQualityFrame(); };
+    ['loadeddata', 'seeked', 'play', 'canplay'].forEach((evt) => video.addEventListener(evt, paintQualityFrameOnce));
+    video.addEventListener('ended', () => window.setTimeout(paintQualityFrameOnce, 150));
+
     function stopQualityProxy() {
         qualityProxyOn = false;
+        degradeState.active = false;
+        degradeState.params = null;
         qualityCanvas.classList.remove('active');
         video.classList.remove('video-proxied');
     }
