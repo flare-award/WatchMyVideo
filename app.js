@@ -2417,9 +2417,11 @@ uniform float uWarm;
 uniform float uDegrade;
 uniform float uBlockPx;
 uniform float uQuant;
+uniform float uMosquito;
 uniform float uNoise;
 uniform float uChroma;
-uniform float uBlur;
+uniform float uFlatten;
+uniform float uDeblock;
 uniform float uTime;
 uniform vec2 uResolution;
 varying vec2 vUv;
@@ -2428,37 +2430,86 @@ float hash21(vec2 p) {
     p += dot(p, p + 34.23);
     return fract(p.x * p.y);
 }
+float lumc(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 void main() {
     vec3 c = texture2D(uTex, vUv).rgb;
     vec3 outc;
     if (uDegrade > 0.5) {
-        // Low-bitrate emulation: macroblocks, bleeding chroma, mush, banding, grain
-        vec2 grid = max(vec2(1.0), floor(uResolution / uBlockPx));
-        vec2 bid = floor(vUv * grid);
-        vec2 bUv = (bid + 0.5) / grid;
-        vec2 bStep = (uBlockPx * 0.28) / uResolution;
-        vec3 blk = (
-            texture2D(uTex, bUv + vec2(bStep.x, 0.0)).rgb +
-            texture2D(uTex, bUv - vec2(bStep.x, 0.0)).rgb +
-            texture2D(uTex, bUv + vec2(0.0, bStep.y)).rgb +
-            texture2D(uTex, bUv - vec2(0.0, bStep.y)).rgb
-        ) * 0.25;
-        float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
-        float bl = dot(blk, vec3(0.2126, 0.7152, 0.0722));
-        // chroma stored at a fraction of luma resolution — soft, smeared color
-        vec3 chroma = blk - vec3(bl);
-        outc = vec3(luma) + chroma * (1.0 - uChroma);
-        // global mush from a very low bitrate
-        outc = mix(outc, blk, uBlur);
-        // mosquito ringing on hard edges
-        float edge = dot(abs(c - blk), vec3(0.3333));
-        outc += edge * 1.15 * (blk - vec3(0.5));
-        // quantization banding
-        outc = floor(outc * uQuant + 0.5) / uQuant;
-        // animated grain
-        float n = hash21(floor(vUv * uResolution) + vec2(fract(uTime * 9.0), fract(uTime * 13.0)) * 517.0);
-        outc += (n - 0.5) * uNoise;
-        outc = clamp(outc, 0.0, 1.0);
+        // Low-bitrate emulation modelled on a block DCT codec (H.264/VP9 as used
+        // for YouTube 144p-480p): flat blocks collapse to a single DC colour, real
+        // edges keep their residual, the in-loop deblocking filter softens block
+        // borders, chroma is stored far below luma resolution (4:2:0), levels are
+        // coarsely quantized (banding) and edges shimmer with mosquito noise.
+        vec2 res = uResolution;
+        float bpx = uBlockPx;
+        vec2 px = vUv * res;
+        vec2 blockCoord = px / bpx;
+        vec2 blockIdx = floor(blockCoord);
+        // Block DC colour + variance: 8x8 taps spanning the whole block
+        vec3 dcAcc = vec3(0.0);
+        float sumL = 0.0, sumL2 = 0.0;
+        vec2 stepUV = vec2(bpx / 8.0) / res;
+        vec2 origin = (blockIdx * bpx) / res + stepUV * 0.5;
+        for (int y = 0; y < 8; y++) {
+            for (int x = 0; x < 8; x++) {
+                vec3 s2 = texture2D(uTex, origin + vec2(float(x), float(y)) * stepUV).rgb;
+                dcAcc += s2;
+                float L2 = lumc(s2);
+                sumL += L2;
+                sumL2 += L2 * L2;
+            }
+        }
+        vec3 dcC = dcAcc / 64.0;
+        float dcLum = sumL / 64.0;
+        float variance = max(0.0, sumL2 / 64.0 - dcLum * dcLum);
+        // Near-flat blocks become single-colour quadrants — the signature look
+        float flatMix = 1.0 - smoothstep(0.0006, 0.0060, variance);
+
+        // Cross-border bilinear of the 4 neighbouring block DCs — what the
+        // deblocking filter leaves behind: borders are soft, never hard grids
+        vec2 fcell = fract(blockCoord - 0.5);
+        vec2 i00 = floor(blockCoord - 0.5);
+        vec3 dc00 = texture2D(uTex, (i00 + 0.5) * bpx / res).rgb;
+        vec3 dc10 = texture2D(uTex, (i00 + vec2(1.5, 0.5)) * bpx / res).rgb;
+        vec3 dc01 = texture2D(uTex, (i00 + vec2(0.5, 1.5)) * bpx / res).rgb;
+        vec3 dc11 = texture2D(uTex, (i00 + vec2(1.5, 1.5)) * bpx / res).rgb;
+        vec3 base = mix(mix(dc00, dc10, fcell.x), mix(dc01, dc11, fcell.x), fcell.y);
+
+        // Flat blocks -> flat quadrants; structured blocks keep texture
+        vec3 rec = mix(c, dcC, clamp(flatMix * uFlatten, 0.0, 1.0));
+
+        // Deblocking: only near the block borders, pull toward the cross-border field
+        vec2 bEdge = abs(fract(blockCoord) - 0.5) * 2.0;
+        float border = smoothstep(0.45, 0.95, max(bEdge.x, bEdge.y));
+        rec = mix(rec, base, uDeblock * border);
+
+        // Chroma is stored at a fraction of luma resolution and bleeds across
+        // luma edges (4:2:0) — the smeared-colour-halo look
+        float Luma = lumc(rec);
+        vec3 coFine = rec - vec3(Luma);
+        vec3 coCoarse = base - vec3(lumc(base));
+        rec = vec3(Luma) + mix(coFine, coCoarse, uChroma);
+
+        // Mosquito noise: flickering speckle that hugs strong edges. Each block
+        // breathes out of phase — low-bitrate streams never sit still.
+        float Lx1 = lumc(texture2D(uTex, vUv + vec2(1.6 / res.x, 0.0)).rgb);
+        float Lx0 = lumc(texture2D(uTex, vUv - vec2(1.6 / res.x, 0.0)).rgb);
+        float Ly1 = lumc(texture2D(uTex, vUv + vec2(0.0, 1.6 / res.y)).rgb);
+        float Ly0 = lumc(texture2D(uTex, vUv - vec2(0.0, 1.6 / res.y)).rgb);
+        float grad = abs(Lx1 - Lx0) + abs(Ly1 - Ly0);
+        float edge = smoothstep(0.07, 0.45, grad);
+        float pump = 0.6 + 0.8 * (0.5 + 0.5 * sin(uTime * 1.5 + hash21(blockIdx + 17.0) * 6.2831));
+        float mz = (hash21(floor(px) + vec2(fract(uTime * 6.7) * 149.0, fract(uTime * 9.1) * 271.0)) - 0.5)
+                    * uMosquito * edge * pump;
+        rec += mz;
+
+        // Coarse quantization of the level range — visible banding in gradients
+        rec = floor(rec * uQuant + 0.5) / uQuant;
+
+        // Low noise floor
+        float n = (hash21(floor(px) + vec2(fract(uTime * 11.0) * 63.0, fract(uTime * 15.0) * 191.0)) - 0.5) * uNoise;
+        rec += n;
+        outc = clamp(rec, 0.0, 1.0);
     } else {
         vec3 avg = (
             texture2D(uTex, vUv + vec2(0.0, uTexel.y)).rgb +
@@ -2520,9 +2571,11 @@ void main() {
             uDegrade: gl.getUniformLocation(program, 'uDegrade'),
             uBlockPx: gl.getUniformLocation(program, 'uBlockPx'),
             uQuant: gl.getUniformLocation(program, 'uQuant'),
+            uMosquito: gl.getUniformLocation(program, 'uMosquito'),
             uNoise: gl.getUniformLocation(program, 'uNoise'),
             uChroma: gl.getUniformLocation(program, 'uChroma'),
-            uBlur: gl.getUniformLocation(program, 'uBlur'),
+            uFlatten: gl.getUniformLocation(program, 'uFlatten'),
+            uDeblock: gl.getUniformLocation(program, 'uDeblock'),
             uTime: gl.getUniformLocation(program, 'uTime'),
             uResolution: gl.getUniformLocation(program, 'uResolution'),
         };
@@ -2539,14 +2592,15 @@ void main() {
         return { sharp: 0, contrast: 1, sat: 1, warm: 0 };
     }
 
-    // Artificial low rungs: emulate a real low-bitrate YouTube/Twitch stream —
-    // mushy detail, macroblocks, bleeding chroma, banding and animated grain —
-    // instead of a clean resample that looks fake.
+    // Artificial low rungs: model a real low-bitrate YouTube/Twitch stream —
+    // flat quantized blocks with softened (deblocked) borders, 4:2:0 chroma
+    // bleeding, banding from coarse levels, breathing mosquito noise — not a
+    // clean resample and not uniform fog.
     function degradeParamsForHeight(targetH) {
-        if (targetH <= 150) return { block: 15, blur: 0.88, quant: 18, noise: 0.06, chroma: 0.85, sat: 0.78, contrast: 0.94, sharp: 0, warm: 0 };
-        if (targetH <= 260) return { block: 12, blur: 0.66, quant: 26, noise: 0.05, chroma: 0.72, sat: 0.84, contrast: 0.955, sharp: 0, warm: 0 };
-        if (targetH <= 380) return { block: 9,  blur: 0.44, quant: 34, noise: 0.038, chroma: 0.55, sat: 0.89, contrast: 0.965, sharp: 0, warm: 0 };
-        return { block: 8, blur: 0.24, quant: 46, noise: 0.028, chroma: 0.4, sat: 0.93, contrast: 0.98, sharp: 0, warm: 0 };
+        if (targetH <= 150) return { block: 16, flatten: 0.95, deblock: 0.50, chroma: 0.80, quant: 12, mosquito: 0.13, noise: 0.032, sat: 0.78, contrast: 0.93, sharp: 0, warm: 0 };
+        if (targetH <= 260) return { block: 12, flatten: 0.80, deblock: 0.38, chroma: 0.60, quant: 16, mosquito: 0.11, noise: 0.024, sat: 0.85, contrast: 0.955, sharp: 0, warm: 0 };
+        if (targetH <= 380) return { block: 8,  flatten: 0.55, deblock: 0.25, chroma: 0.42, quant: 24, mosquito: 0.07, noise: 0.015, sat: 0.90, contrast: 0.97, sharp: 0, warm: 0 };
+        return { block: 8, flatten: 0.40, deblock: 0.18, chroma: 0.32, quant: 28, mosquito: 0.04, noise: 0.010, sat: 0.92, contrast: 0.98, sharp: 0, warm: 0 };
     }
 
     const degradeState = { active: false, params: null };
@@ -2585,10 +2639,12 @@ void main() {
         gl.uniform1f(glLocations.uWarm, p.warm);
         gl.uniform1f(glLocations.uDegrade, degradeState.active ? 1 : 0);
         gl.uniform1f(glLocations.uBlockPx, p.block || 8);
-        gl.uniform1f(glLocations.uQuant, p.quant || 48);
+        gl.uniform1f(glLocations.uQuant, p.quant || 32);
+        gl.uniform1f(glLocations.uMosquito, p.mosquito || 0);
         gl.uniform1f(glLocations.uNoise, p.noise || 0);
         gl.uniform1f(glLocations.uChroma, p.chroma || 0);
-        gl.uniform1f(glLocations.uBlur, p.blur || 0);
+        gl.uniform1f(glLocations.uFlatten, p.flatten || 0);
+        gl.uniform1f(glLocations.uDeblock, p.deblock || 0);
         gl.uniform1f(glLocations.uTime, (performance.now() % 100000) / 1000);
         gl.uniform2f(glLocations.uResolution, qualityCanvas.width, qualityCanvas.height);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -2601,21 +2657,41 @@ void main() {
         const minDim = Math.min(w, h);
         if (degradeState.active && degradeState.params) {
             const p = degradeState.params;
-            // Soft mush first (low-bitrate streams aren't crisp)
-            qualityCtx.filter = `blur(${Math.min(1.3, p.blur)}px) saturate(${p.sat}) contrast(${p.contrast})`;
-            qualityCtx.imageSmoothingEnabled = true;
-            qualityCtx.imageSmoothingQuality = 'high';
-            qualityCtx.drawImage(video, 0, 0, w, h);
-            // Macroblocks: collapse to a coarse grid, then back up with soft edges
+            // Block DCT look without WebGL: coarse DC grid + level quantization
             const bw = Math.max(2, Math.round(w / p.block));
             const bh = Math.max(2, Math.round(h / p.block));
             blockCanvas.width = bw; blockCanvas.height = bh;
-            const bctx = blockCanvas.getContext('2d', { alpha: false });
+            const bctx = blockCanvas.getContext('2d', { alpha: false, willReadFrequently: true });
             bctx.imageSmoothingEnabled = true;
+            bctx.imageSmoothingQuality = 'high';
             bctx.filter = 'none';
-            bctx.drawImage(qualityCanvas, 0, 0, bw, bh);
-            qualityCtx.filter = 'none';
+            bctx.drawImage(video, 0, 0, bw, bh);
+            try {
+                const img = bctx.getImageData(0, 0, bw, bh);
+                const d = img.data;
+                const levels = p.quant;
+                const step = 255 / levels;
+                const bleed = p.chroma;
+                for (let i = 0; i < d.length; i += 4) {
+                    let r = d[i], g = d[i + 1], b = d[i + 2];
+                    // 4:2:0-style chroma bleed: pull colour toward the local grey
+                    const gray = r * 0.2126 + g * 0.7152 + b * 0.0722;
+                    r = gray + (r - gray) * (1 - bleed * 0.55);
+                    g = gray + (g - gray) * (1 - bleed * 0.55);
+                    b = gray + (b - gray) * (1 - bleed * 0.55);
+                    // Coarse level quantization -> banding
+                    r = Math.round(Math.round(r / step) * step);
+                    g = Math.round(Math.round(g / step) * step);
+                    b = Math.round(Math.round(b / step) * step);
+                    d[i] = r; d[i + 1] = g; d[i + 2] = b;
+                }
+                bctx.putImageData(img, 0, 0);
+            } catch (_) { /* willReadFrequently unsupported — blocky grid still fine */ }
+            qualityCtx.filter = `saturate(${p.sat}) contrast(${p.contrast})`;
+            qualityCtx.imageSmoothingEnabled = true;
+            qualityCtx.imageSmoothingQuality = 'high';
             qualityCtx.drawImage(blockCanvas, 0, 0, w, h);
+            qualityCtx.filter = 'none';
             // Grain
             qualityCtx.globalAlpha = Math.min(0.5, p.noise * 2.2);
             const pat = qualityCtx.createPattern(noiseTile, 'repeat');
