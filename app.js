@@ -681,6 +681,7 @@ document.addEventListener('DOMContentLoaded', () => {
         stopQualityProxy();
         qualitiesComputed = false;
         resetFpsSampler();
+        if (!opts.audio) probeFpsFromUrl(sourceUrl, videoKey);
         currentQualityKey = 'original';
         leaveSheetMode();
         if (settingsMenu) settingsMenu.classList.add('hidden');
@@ -2066,7 +2067,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function stepFrame(frames) {
         if (!video.paused || !hasDuration()) return;
         flashSuppressUntil = Date.now() + 600;
-        const step = frames / ESTIMATED_FPS;
+        const step = frames / (knownFps || ESTIMATED_FPS);
         video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + step));
     }
 
@@ -2898,11 +2899,215 @@ document.addEventListener('DOMContentLoaded', () => {
         requestAnimationFrame(step);
     })();
 
+    let fpsFromFile = false; // the container's own rate beats any presentation estimate
+
     function resetFpsSampler() {
         knownFps = null;
         fpsSamples = [];
         fpsLastMediaTime = 0;
         fpsSampling = false;
+        fpsFromFile = false;
+    }
+
+    function snapFpsValue(fps) {
+        const standards = [10, 15, 24, 25, 30, 48, 50, 60, 90, 120, 144, 240];
+        for (const std of standards) {
+            if (Math.abs(fps - std) <= Math.max(2, std * 0.03)) return std;
+        }
+        return Math.round(fps);
+    }
+
+    // =========================================================
+    //  True frame rate from the container (MP4/MOV: mdhd timescale +
+    //  stts sample deltas of the video track; AVI: avih µs-per-frame).
+    //  The rVFC sampler below only sees the *presentation* cadence —
+    //  a 120 fps file on a 60 Hz screen measures as 60 or less there.
+    // =========================================================
+    function fourcc(view, off) {
+        return String.fromCharCode(view.getUint8(off), view.getUint8(off + 1), view.getUint8(off + 2), view.getUint8(off + 3));
+    }
+
+    function* boxIter(view, start, end) {
+        let o = start;
+        while (o + 8 <= end) {
+            let size = view.getUint32(o);
+            const type = fourcc(view, o + 4);
+            let header = 8;
+            if (size === 1) { size = Number(view.getBigUint64(o + 8)); header = 16; }
+            else if (size === 0) size = end - o;
+            if (size < header || o + size > end) break;
+            yield { type, start: o + header, end: o + size };
+            o += size;
+        }
+    }
+
+    function mp4VideoTrack(view, trak) {
+        let timescale = 0;
+        let handler = '';
+        let trackId = 0;
+        let totalSamples = 0;
+        let totalDelta = 0;
+        for (const child of boxIter(view, trak.start, trak.end)) {
+            if (child.type === 'tkhd') {
+                const version = view.getUint8(child.start);
+                trackId = version === 1 ? view.getUint32(child.start + 20) : view.getUint32(child.start + 12);
+                continue;
+            }
+            if (child.type !== 'mdia') continue;
+            for (const item of boxIter(view, child.start, child.end)) {
+                if (item.type === 'mdhd') {
+                    const version = view.getUint8(item.start);
+                    timescale = version === 1 ? view.getUint32(item.start + 20) : view.getUint32(item.start + 12);
+                } else if (item.type === 'hdlr') {
+                    handler = fourcc(view, item.start + 8);
+                } else if (item.type === 'minf') {
+                    for (const sub of boxIter(view, item.start, item.end)) {
+                        if (sub.type !== 'stbl') continue;
+                        for (const leaf of boxIter(view, sub.start, sub.end)) {
+                            if (leaf.type !== 'stts') continue;
+                            const count = view.getUint32(leaf.start + 4);
+                            for (let i = 0; i < count; i++) {
+                                const n = view.getUint32(leaf.start + 8 + i * 8);
+                                const d = view.getUint32(leaf.start + 12 + i * 8);
+                                totalSamples += n;
+                                totalDelta += n * d;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (handler !== 'vide' || !timescale) return null;
+        return {
+            timescale,
+            trackId,
+            fps: totalSamples && totalDelta ? (totalSamples * timescale) / totalDelta : null
+        };
+    }
+
+    // Fragmented MP4 (Chrome recordings, many cameras): moov/stts is empty —
+    // the frame timing lives in moof/traf/trun sample durations instead.
+    async function mp4FragmentFps(blob, trackId, timescale) {
+        let offset = 0;
+        let samples = 0;
+        let deltaSum = 0;
+        let moofs = 0;
+        let guard = 0;
+        while (offset + 8 <= blob.size && guard++ < 8192 && moofs < 24 && samples < 4000) {
+            const h = new DataView(await blob.slice(offset, offset + 16).arrayBuffer());
+            let size = h.getUint32(0);
+            const type = fourcc(h, 4);
+            let header = 8;
+            if (size === 1) { size = Number(h.getBigUint64(8)); header = 16; }
+            else if (size === 0) size = blob.size - offset;
+            if (size < header) break;
+            if (type === 'moof') {
+                moofs++;
+                const view = new DataView(await blob.slice(offset + header, offset + size).arrayBuffer());
+                for (const traf of boxIter(view, 0, view.byteLength)) {
+                    if (traf.type !== 'traf') continue;
+                    let defDur = 0;
+                    let isVideo = false;
+                    const truns = [];
+                    for (const item of boxIter(view, traf.start, traf.end)) {
+                        if (item.type === 'tfhd') {
+                            const flags = view.getUint32(item.start) & 0xffffff;
+                            let p = item.start + 4;
+                            isVideo = view.getUint32(p) === trackId;
+                            p += 4;
+                            if (flags & 0x000001) p += 8;
+                            if (flags & 0x000002) p += 4;
+                            if (flags & 0x000008) { defDur = view.getUint32(p); p += 4; }
+                        } else if (item.type === 'trun') {
+                            truns.push(item);
+                        }
+                    }
+                    if (!isVideo) continue;
+                    for (const trun of truns) {
+                        const flags = view.getUint32(trun.start) & 0xffffff;
+                        let p = trun.start + 4;
+                        const count = view.getUint32(p);
+                        p += 4;
+                        if (flags & 0x000001) p += 4;
+                        if (flags & 0x000004) p += 4;
+                        const entrySize = (flags & 0x000100 ? 4 : 0) + (flags & 0x000200 ? 4 : 0) +
+                                          (flags & 0x000400 ? 4 : 0) + (flags & 0x000800 ? 4 : 0);
+                        for (let i = 0; i < count; i++) {
+                            deltaSum += (flags & 0x000100) ? view.getUint32(p) : defDur;
+                            samples++;
+                            p += entrySize;
+                        }
+                    }
+                }
+            }
+            offset += size;
+        }
+        return samples && deltaSum ? (samples * timescale) / deltaSum : null;
+    }
+
+    async function readContainerFps(blob) {
+        try {
+            if (!blob || blob.size < 12) return null;
+            const head = new DataView(await blob.slice(0, 16).arrayBuffer());
+            // AVI: avih carries µs per frame
+            if (fourcc(head, 0) === 'RIFF') {
+                const buf = new Uint8Array(await blob.slice(0, Math.min(blob.size, 1 << 16)).arrayBuffer());
+                for (let i = 0; i + 12 < buf.length; i++) {
+                    if (buf[i] === 0x61 && buf[i + 1] === 0x76 && buf[i + 2] === 0x69 && buf[i + 3] === 0x68) {
+                        const view = new DataView(buf.buffer, buf.byteOffset);
+                        const usec = view.getUint32(i + 8, true);
+                        if (usec > 0) return 1000000 / usec;
+                    }
+                }
+                return null;
+            }
+            // MP4 / MOV: walk top-level boxes to moov, then read the video track
+            let offset = 0;
+            let guard = 0;
+            while (offset + 8 <= blob.size && guard++ < 128) {
+                const h = new DataView(await blob.slice(offset, offset + 16).arrayBuffer());
+                let size = h.getUint32(0);
+                const type = fourcc(h, 4);
+                let header = 8;
+                if (size === 1) { size = Number(h.getBigUint64(8)); header = 16; }
+                else if (size === 0) size = blob.size - offset;
+                if (size < header) break;
+                if (type === 'moov') {
+                    const moov = new DataView(await blob.slice(offset + header, offset + size).arrayBuffer());
+                    let videoTrack = null;
+                    for (const trak of boxIter(moov, 0, moov.byteLength)) {
+                        if (trak.type !== 'trak') continue;
+                        const info = mp4VideoTrack(moov, trak);
+                        if (info) { videoTrack = info; break; }
+                    }
+                    if (!videoTrack) return null;
+                    if (videoTrack.fps) return videoTrack.fps;
+                    if (videoTrack.trackId) return await mp4FragmentFps(blob, videoTrack.trackId, videoTrack.timescale);
+                    return null;
+                }
+                offset += size;
+            }
+            return null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    async function probeFpsFromUrl(url, key) {
+        try {
+            const blob = await (await fetch(url)).blob();
+            const fps = await readContainerFps(blob);
+            if (!fps || key !== currentVideoKey) return; // stale session — ignore
+            const snapped = snapFpsValue(fps);
+            if (snapped >= 10 && snapped <= 500) {
+                fpsFromFile = true;
+                if (knownFps !== snapped) {
+                    knownFps = snapped;
+                    if (updateQualityUI) updateQualityUI();
+                    if (statsVisible) updateStatsUI();
+                }
+            }
+        } catch (_) { /* the presentation sampler remains as fallback */ }
     }
 
     function startFpsSampler() {
@@ -2923,13 +3128,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const mid = sorted[Math.floor(sorted.length / 2)];
                 const fps = Math.round(1 / mid);
                 fpsSampling = false;
-                // Snap to the nearest standard rate (30fps content measured as 31 is still 30)
-                const standards = [10, 15, 24, 25, 30, 48, 50, 60, 90, 120, 144, 240];
-                let snapped = fps;
-                for (const std of standards) {
-                    if (Math.abs(fps - std) <= 2) { snapped = std; break; }
-                }
-                if (snapped >= 10 && snapped <= 240 && snapped !== knownFps) {
+                // Presentation estimate only — the file's own rate (probeFpsFromUrl) wins
+                const snapped = snapFpsValue(fps);
+                if (!fpsFromFile && snapped >= 10 && snapped <= 240 && snapped !== knownFps) {
                     knownFps = snapped;
                     if (updateQualityUI) updateQualityUI();
                 }
