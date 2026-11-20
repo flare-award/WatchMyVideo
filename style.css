@@ -1414,14 +1414,20 @@ body.idle .player-wrapper {
 }
 
 .autoplay-thumb i {
-    font-size: 0.72rem;
     line-height: 1;
     color: #fff;
-    position: absolute;
 }
 
-.autoplay-thumb .fa-play {
-    padding-left: 2px; /* optical centering of the play triangle */
+/* Pause — medium glyph (between the old hand-drawn miniature and the
+   oversized first FA attempt); play — back to its original size.
+   Both are flex-centred by the thumb itself, not absolutely placed. */
+.autoplay-thumb .autoplay-icon-off {
+    font-size: 0.64rem;
+}
+
+.autoplay-thumb .autoplay-icon-on {
+    font-size: 0.58rem;
+    transform: translateX(1px); /* optical centering of the play triangle */
 }
 
 .autoplay-icon-on {
