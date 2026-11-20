@@ -707,6 +707,7 @@ document.addEventListener('DOMContentLoaded', () => {
         appShell.classList.remove('hidden');
         replayOverlay.classList.add('hidden');
         playerWrapper.classList.remove('video-ended');
+        document.body.classList.remove('ambient-off');
         playerWrapper.classList.toggle('audio-mode', currentIsAudio);
         document.body.classList.add('video-active');
         document.body.classList.toggle('is-audio', currentIsAudio);
@@ -1844,6 +1845,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (audioCoverTop) audioCoverTop.addEventListener('click', togglePlayPause);
 
     video.addEventListener('play', () => {
+        document.body.classList.remove('ambient-off');
         if (ensureBoostGraph()) resumeAudioContext();
         startFpsSampler();
         scheduleIdle();
@@ -1873,6 +1875,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (!video.loop) {
             playerWrapper.classList.add('video-ended');
+            document.body.classList.add('ambient-off'); // black end screen — no glow
             replayOverlay.classList.remove('hidden');
             updatePlayPauseButton(false);
             // Theater end-of-video: hide the chrome, like YouTube.
@@ -2005,6 +2008,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try { progressContainer.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
         replayOverlay.classList.add('hidden');
         playerWrapper.classList.remove('video-ended');
+        document.body.classList.remove('ambient-off'); // scrubbing away from the end screen
         seekToPosition(e);
         pokeUI();
     });

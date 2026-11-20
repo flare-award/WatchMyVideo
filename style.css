@@ -1414,17 +1414,14 @@ body.idle .player-wrapper {
 }
 
 .autoplay-thumb i {
-    font-size: 0.58rem;
+    font-size: 0.72rem;
     line-height: 1;
     color: #fff;
     position: absolute;
 }
 
-.autoplay-thumb svg.autoplay-icon-off {
-    width: 0.62rem;
-    height: 0.62rem;
-    color: #fff;
-    position: absolute;
+.autoplay-thumb .fa-play {
+    padding-left: 2px; /* optical centering of the play triangle */
 }
 
 .autoplay-icon-on {
@@ -1493,6 +1490,11 @@ body.idle .player-wrapper {
 
 body.studio-light .ambient-halo {
     opacity: 1;
+}
+
+body.ambient-off .ambient-halo,
+body.ambient-off .ambient-canvas {
+    opacity: 0 !important;
 }
 
 /* YouTube theater stretches the player across everything — hide the halo there */
