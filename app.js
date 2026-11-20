@@ -530,6 +530,8 @@ document.addEventListener('DOMContentLoaded', () => {
         currentFileSize = fileSize || 0;
         currentFileCreated = opts.created || null;
         currentIsAudio = !!opts.audio;
+        statsScpn = makeScpn();
+        if (statsVisible) updateStatsUI();
 
         video.src = sourceUrl;
         video.load();
@@ -927,6 +929,7 @@ document.addEventListener('DOMContentLoaded', () => {
             playerWrapper.style.setProperty('--video-ar-num', String(ar));
         }
         durationEl.textContent = formatTime(video.duration);
+        if (statsVisible) updateStatsUI();
         if (!qualitiesComputed) {
             qualitiesComputed = true;
             computeQualities();
@@ -2942,6 +2945,155 @@ void main() {
     video.addEventListener('seeked', () => {
         if (qualityProxyOn) drawQualityFrame();
     });
+
+    // =========================================================
+    //  «Статистика для сисадминов» — top-left nerds panel + right-click menu
+    // =========================================================
+    const statsOverlay = $('stats-overlay');
+    const statsCloseBtn = $('stats-close');
+    const videoContextMenu = $('video-context-menu');
+    const ctxStatsToggle = $('ctx-stats-toggle');
+    const stVideoid = $('st-videoid');
+    const stViewport = $('st-viewport');
+    const stRes = $('st-res');
+    const stVolume = $('st-volume');
+    const stCodecs = $('st-codecs');
+    const stColor = $('st-color');
+    const stFile = $('st-file');
+    const stDate = $('st-date');
+
+    let statsVisible = storageGet('wmv_stats', '0') === '1';
+    let statsScpn = makeScpn();
+
+    function makeScpn() {
+        const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+        let out = '';
+        for (let i = 0; i < 16; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+        return out;
+    }
+
+    function videoIdForKey(key) {
+        const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+        let h1 = 0x9e3779b1 ^ 0, h2 = 0x85ebca77 ^ 0;
+        const str = String(key || 'video');
+        for (let i = 0; i < str.length; i++) {
+            const c = str.charCodeAt(i);
+            h1 = Math.imul(h1 ^ c, 2654435761);
+            h2 = Math.imul(h2 ^ c, 1597334677);
+        }
+        let id = '';
+        for (let i = 0; i < 11; i++) {
+            if (i % 2 === 0) {
+                h1 = Math.imul(h1 ^ (h1 >>> 15), 2246822507);
+                id += alphabet[(h1 >>> 0) % 64];
+            } else {
+                h2 = Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+                id += alphabet[(h2 >>> 0) % 64];
+            }
+        }
+        return id;
+    }
+
+    function statsCodecs() {
+        const ext = (((currentFileName || '').match(/\.([a-z0-9]+)$/i) || [])[1] || '').toLowerCase();
+        if (currentIsAudio) {
+            const map = { mp3: 'MP3 · MPEG-1 Audio Layer III', wav: 'PCM · WAV', flac: 'FLAC', ogg: 'Vorbis/Opus · OGG', m4a: 'AAC · M4A', aac: 'AAC · ADTS' };
+            return map[ext] || (ext ? ext.toUpperCase() : 'неизвестно');
+        }
+        const vmap = {
+            mp4: 'H.264/H.265 · MP4 (по расширению)',
+            m4v: 'H.264 · M4V (по расширению)',
+            webm: 'VP8/VP9/AV1 · WebM (по расширению)',
+            mkv: 'H.264/H.265/VP9 · MKV (по расширению)',
+            mov: 'H.264 · MOV (по расширению)',
+            avi: 'MJPEG/Xvid · AVI (по расширению)',
+            ogv: 'Theora · OGG (по расширению)'
+        };
+        return vmap[ext] || (ext ? ext.toUpperCase() : 'неизвестно');
+    }
+
+    function refreshStatsDynamic() {
+        if (!stViewport) return;
+        const vw = video.videoWidth || 0;
+        const vh = video.videoHeight || 0;
+        stViewport.textContent = vw
+            ? `${video.clientWidth} × ${video.clientHeight}  /  ${vw} × ${vh} @ ${knownFps || 60} fps`
+            : '—';
+        const cur = availableQualities.find((q) => q.key === currentQualityKey);
+        const opt = availableQualities.find((q) => q.original);
+        const curH = cur ? cur.height : (vh || 0);
+        const optH = opt ? opt.height : (vh || 0);
+        stRes.textContent = `${qualityLabel(curH)}  /  ${qualityLabel(optH)}`;
+        const vol = Math.round(video.volume * 100);
+        stVolume.textContent = `${vol}%  /  ${loudnessNorm ? '100% (норм.)' : 'без норм.'}`;
+    }
+
+    function updateStatsUI() {
+        if (!statsOverlay) return;
+        stVideoid.textContent = `${videoIdForKey(currentVideoKey)}\nsCPN ${statsScpn}`;
+        refreshStatsDynamic();
+        stCodecs.textContent = statsCodecs();
+        const vh = video.videoHeight || 0;
+        stColor.textContent = vh >= 480 ? 'bt709' : (vh > 0 ? 'smpte170m (BT.601)' : '—');
+        stFile.textContent = currentFileName || '—';
+        stDate.textContent = currentFileCreated
+            ? new Date(currentFileCreated).toLocaleString('ru-RU')
+            : '—';
+    }
+
+    function setStatsVisible(visible) {
+        statsVisible = !!visible;
+        storageSet('wmv_stats', statsVisible ? '1' : '0');
+        if (statsOverlay) statsOverlay.classList.toggle('hidden', !statsVisible);
+        if (ctxStatsToggle) ctxStatsToggle.setAttribute('aria-checked', statsVisible ? 'true' : 'false');
+        if (statsVisible) updateStatsUI();
+    }
+
+    function showVideoContextMenu(x, y) {
+        if (!videoContextMenu) return;
+        videoContextMenu.classList.remove('hidden');
+        ctxStatsToggle.setAttribute('aria-checked', statsVisible ? 'true' : 'false');
+        const mw = videoContextMenu.offsetWidth || 264;
+        const mh = videoContextMenu.offsetHeight || 48;
+        const left = Math.max(8, Math.min(x, window.innerWidth - mw - 8));
+        const top = Math.max(8, Math.min(y, window.innerHeight - mh - 8));
+        videoContextMenu.style.left = left + 'px';
+        videoContextMenu.style.top = top + 'px';
+    }
+
+    function hideVideoContextMenu() {
+        if (videoContextMenu) videoContextMenu.classList.add('hidden');
+    }
+
+    if (playerWrapper) {
+        playerWrapper.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            showVideoContextMenu(e.clientX, e.clientY);
+        });
+    }
+    if (ctxStatsToggle) {
+        ctxStatsToggle.addEventListener('click', () => {
+            setStatsVisible(!statsVisible);
+            hideVideoContextMenu();
+        });
+    }
+    if (statsCloseBtn) statsCloseBtn.addEventListener('click', () => setStatsVisible(false));
+    document.addEventListener('click', (e) => {
+        if (videoContextMenu && !videoContextMenu.classList.contains('hidden') && !videoContextMenu.contains(e.target)) {
+            hideVideoContextMenu();
+        }
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') hideVideoContextMenu();
+    });
+    window.addEventListener('resize', hideVideoContextMenu);
+    document.addEventListener('scroll', hideVideoContextMenu, true);
+    // Live numbers (viewport/res/volume) — only while the panel is actually on screen
+    window.setInterval(() => {
+        if (statsVisible && !document.hidden) refreshStatsDynamic();
+    }, 900);
+    if (ctxStatsToggle) ctxStatsToggle.setAttribute('aria-checked', statsVisible ? 'true' : 'false');
+    if (statsVisible && statsOverlay) statsOverlay.classList.remove('hidden');
 
     // =========================================================
     //  Subtitles

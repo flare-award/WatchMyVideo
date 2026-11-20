@@ -95,6 +95,42 @@
                             <img id="audio-cover" class="audio-cover hidden" alt="" aria-hidden="true">
                             <div id="center-flash" class="center-flash"><i id="center-flash-icon" class="fa-solid fa-play"></i></div>
 
+                            <!-- «Статистика для сисадминов» — YouTube-style nerds panel, toggled from the right-click menu -->
+                            <div id="stats-overlay" class="stats-overlay hidden" role="dialog" aria-label="Статистика для сисадминов">
+                                <div class="stats-header">
+                                    <span class="stats-title">Статистика для сисадминов</span>
+                                    <button id="stats-close" class="stats-close" type="button" title="Закрыть" aria-label="Закрыть статистику">
+                                        <i class="fa-solid fa-xmark"></i>
+                                    </button>
+                                </div>
+                                <div class="stats-grid">
+                                    <div class="stats-label">Video ID / sCPN</div>
+                                    <div class="stats-value" id="st-videoid">—</div>
+                                    <div class="stats-label">Viewport / Frames</div>
+                                    <div class="stats-value" id="st-viewport">—</div>
+                                    <div class="stats-label">Current / Optimal Res</div>
+                                    <div class="stats-value" id="st-res">—</div>
+                                    <div class="stats-label">Volume / Normalized</div>
+                                    <div class="stats-value" id="st-volume">—</div>
+                                    <div class="stats-label">Codecs</div>
+                                    <div class="stats-value" id="st-codecs">—</div>
+                                    <div class="stats-label">Color</div>
+                                    <div class="stats-value" id="st-color">—</div>
+                                    <div class="stats-label">File location</div>
+                                    <div class="stats-value" id="st-file">—</div>
+                                    <div class="stats-label">Date</div>
+                                    <div class="stats-value" id="st-date">—</div>
+                                </div>
+                            </div>
+
+                            <!-- Custom right-click menu (replaces the browser menu inside the player) -->
+                            <div id="video-context-menu" class="context-menu hidden" role="menu" aria-label="Меню плеера">
+                                <button id="ctx-stats-toggle" class="context-menu-item" type="button" role="menuitemcheckbox" aria-checked="false">
+                                    <span class="context-menu-check" aria-hidden="true"><i class="fa-solid fa-check"></i></span>
+                                    <span class="context-menu-label">Статистика для сисадминов</span>
+                                </button>
+                            </div>
+
                             <div id="replay-overlay" class="replay-overlay hidden" role="button" tabindex="0" aria-label="Смотреть снова">
                                 <button id="btn-replay" class="replay-button" type="button">
                                     <i class="fa-solid fa-rotate-right"></i><span>Смотреть снова</span>
