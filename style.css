@@ -2317,7 +2317,7 @@ input:checked + .slider-toggle:before {
 .tk-rail {
     position: absolute;
     right: 8px;
-    bottom: 128px;
+    bottom: 12px;
     display: none;
     flex-direction: column;
     align-items: center;
@@ -2325,6 +2325,12 @@ input:checked + .slider-toggle:before {
     z-index: 26;
     pointer-events: auto;
     transition: opacity 0.25s ease;
+}
+
+.tk-action {
+    width: 52px;
+    min-height: 52px;
+    justify-content: center;
 }
 
 .tk-avatar-wrap {
@@ -2343,7 +2349,6 @@ input:checked + .slider-toggle:before {
     justify-content: center;
     font-size: 1.3rem;
     font-weight: 800;
-    border: 2px solid #fff;
     user-select: none;
 }
 
@@ -2418,82 +2423,49 @@ input:checked + .slider-toggle:before {
     position: absolute;
     left: 12px;
     right: 76px;
-    bottom: 30px;
+    bottom: 12px;
+    height: 52px;
     color: #fff;
     z-index: 26;
     display: none;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
     pointer-events: auto;
     transition: opacity 0.25s ease;
 }
 
 .tk-author {
-    font-size: 1.02rem;
+    font-size: 1.0rem;
     font-weight: 700;
     text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.tk-info-sep {
+    color: rgba(255, 255, 255, 0.75);
+    flex-shrink: 0;
 }
 
 .tk-desc {
     font-size: 0.84rem;
-    line-height: 1.4;
-    margin-top: 6px;
+    line-height: 1.35;
     text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    overflow-wrap: anywhere;
-}
-
-.tk-music {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 12px;
-    font-size: 0.8rem;
-    color: #fff;
-    max-width: 100%;
-}
-
-.tk-music i {
-    font-size: 0.82rem;
-    flex-shrink: 0;
-    line-height: 1;
-}
-
-.tk-music-marquee {
-    overflow: hidden;
     white-space: nowrap;
-    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
     min-width: 0;
-    height: 1.1em;
-    mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent);
-    -webkit-mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent);
 }
 
-.tk-music-marquee span {
-    display: inline-block;
-    white-space: nowrap;
-    will-change: transform;
-    animation: tk-marquee 12s linear infinite;
-}
-
-/* Content is duplicated twice in the markup/JS, so shifting by exactly half
-   loops seamlessly — no gaps, no jump-cut. */
-@keyframes tk-marquee {
-    from { transform: translateX(0); }
-    to   { transform: translateX(-50%); }
-}
-
-/* Spinning record disc pinned under the rail, like TikTok */
+/* Static record disc pinned under the rail — TikTok-style, never spinning */
 .tk-disc {
-    position: absolute;
-    right: 10px;
-    bottom: 12px;
-    z-index: 22;
-    width: 44px;
-    height: 44px;
+    position: static;
+    z-index: auto;
+    width: 52px;
+    height: 52px;
     border-radius: 50%;
-    display: none;
+    display: flex;
     align-items: center;
     justify-content: center;
     transition: opacity 0.25s ease;
@@ -2501,14 +2473,9 @@ input:checked + .slider-toggle:before {
         radial-gradient(circle at center, #2b2b2b 0 26%, #111 27% 44%, #1d1d1d 45% 52%, #000 53% 100%);
     border: 2px solid rgba(255, 255, 255, 0.25);
     color: #fff;
-    font-size: 0.78rem;
-    animation: tk-spin 4.5s linear infinite;
+    font-size: 0.82rem;
+    flex-shrink: 0;
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8));
-}
-
-@keyframes tk-spin {
-    from { transform: rotate(0deg); }
-    to   { transform: rotate(360deg); }
 }
 
 /* Share-style settings sheet (TikTok) — circle actions in a horizontal row */
@@ -2920,9 +2887,18 @@ body.mode-tiktok .controls-row {
 
 body.mode-tiktok .progress-container {
     height: 3px;
-    margin: 0;
-    border-radius: 0;
-    background: rgba(255, 255, 255, 0.28);
+    margin: 0 auto;
+    width: calc(100% - 16px);
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.24);
+}
+
+body.mode-tiktok .progress-played {
+    background: #ffffff;
+}
+
+body.mode-tiktok .progress-hover {
+    background: rgba(255, 255, 255, 0.6);
 }
 
 body.mode-tiktok .progress-container:hover {
@@ -3002,10 +2978,6 @@ body.mode-tiktok .tk-rail {
 }
 
 body.mode-tiktok .tk-info {
-    display: block;
-}
-
-body.mode-tiktok .tk-disc {
     display: flex;
 }
 
@@ -3476,4 +3448,119 @@ body.mode-tiktok .tk-backdrop {
 
 .context-menu-item[aria-checked="true"] .context-menu-check {
     visibility: visible;
+}
+
+/* ============================================================
+   TikTok paused indicator — static, small, white · 40% opacity,
+   zero animation; simply vanishes on unpause
+   ============================================================ */
+.tk-paused-badge {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 24;
+    width: 74px;
+    height: 74px;
+    border-radius: 18px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.4);
+    pointer-events: none;
+    user-select: none;
+}
+
+.tk-paused-badge i {
+    font-size: 3.4rem;
+    line-height: 1;
+    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.45);
+}
+
+.tk-paused-badge.visible {
+    display: flex;
+}
+
+/* ============================================================
+   One-time account-name card
+   ============================================================ */
+.account-name-card {
+    position: fixed;
+    left: 50%;
+    bottom: 36px;
+    transform: translateX(-50%);
+    z-index: 95;
+    width: min(420px, calc(100vw - 32px));
+    background: rgba(28, 28, 28, 0.98);
+    border-radius: 16px;
+    box-shadow: 0 14px 48px rgba(0, 0, 0, 0.6);
+    padding: 18px 18px 14px;
+    color: #fff;
+}
+
+.account-name-title {
+    font-size: 1.02rem;
+    font-weight: 700;
+}
+
+.account-name-sub {
+    font-size: 0.8rem;
+    line-height: 1.45;
+    color: #b9b9b9;
+    margin-top: 6px;
+}
+
+.account-name-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.account-name-row input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 40px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    border-radius: 10px;
+    padding: 0 12px;
+    font-size: 0.95rem;
+    outline: none;
+}
+
+.account-name-row input:focus {
+    border-color: #3ea6ff;
+}
+
+.account-name-save {
+    height: 40px;
+    border: none;
+    border-radius: 10px;
+    background: #f1f1f1;
+    color: #0f0f0f;
+    font-weight: 700;
+    font-size: 0.88rem;
+    padding: 0 16px;
+    cursor: pointer;
+}
+
+.account-name-save:hover {
+    background: #d9d9d9;
+}
+
+.account-name-skip {
+    margin-top: 10px;
+    background: transparent;
+    border: none;
+    color: #8f8f8f;
+    font-size: 0.82rem;
+    padding: 2px 4px;
+    cursor: pointer;
+    border-radius: 6px;
+}
+
+.account-name-skip:hover {
+    color: #e0e0e0;
+    background: rgba(255, 255, 255, 0.06);
 }

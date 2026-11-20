@@ -94,6 +94,7 @@
                             <canvas id="quality-canvas" class="quality-canvas" aria-hidden="true"></canvas>
                             <img id="audio-cover" class="audio-cover hidden" alt="" aria-hidden="true">
                             <div id="center-flash" class="center-flash"><i id="center-flash-icon" class="fa-solid fa-play"></i></div>
+                            <div id="tk-paused-badge" class="tk-paused-badge" aria-hidden="true"><i class="fa-solid fa-play"></i></div>
 
                             <!-- «Статистика для сисадминов» — YouTube-style nerds panel, toggled from the right-click menu -->
                             <div id="stats-overlay" class="stats-overlay hidden" role="dialog" aria-label="Статистика для сисадминов">
@@ -144,7 +145,7 @@
                             <div id="subtitle-overlay" class="subtitle-overlay"></div>
                                     <div class="tk-rail" id="tk-rail">
                                         <div class="tk-avatar-wrap">
-                                            <div class="tk-avatar" id="tk-avatar">B</div>
+                                            <div class="tk-avatar" id="tk-avatar">В</div>
                                             <button class="tk-follow" id="tk-follow" type="button" title="Подписаться на автора" aria-pressed="false">
                                                 <i class="fa-solid fa-plus" id="tk-follow-icon"></i>
                                             </button>
@@ -159,22 +160,19 @@
                                         </button>
                                         <button class="tk-action" id="tk-save" type="button" title="В избранное" aria-pressed="false">
                                             <i class="fa-solid fa-bookmark" id="tk-save-icon"></i>
-                                            <span class="tk-count" id="tk-save-label">В избранное</span>
+                                            <span class="tk-count" id="tk-save-count">0</span>
                                         </button>
                                         <button class="tk-action" id="tk-share" type="button" title="Поделиться и настройки" aria-label="Поделиться и настройки" aria-haspopup="dialog">
                                             <i class="fa-solid fa-share"></i>
-                                            <span class="tk-count">Поделиться</span>
+                                            <span class="tk-count" id="tk-share-count">0</span>
                                         </button>
+                                        <div class="tk-disc" id="tk-disc" aria-hidden="true"><i class="fa-solid fa-music"></i></div>
                                     </div>
-                                    <div class="tk-disc" aria-hidden="true"><i class="fa-solid fa-music"></i></div>
 
                                     <div class="tk-info">
-                                        <div class="tk-author" id="tk-author">@author</div>
-                                        <div class="tk-desc" id="tk-desc">Описание видео</div>
-                                        <div class="tk-music">
-                                            <i class="fa-solid fa-music"></i>
-                                            <div class="tk-music-marquee"><span id="tk-music-text">оригинальный звук&#160;&#160;&#160;•&#160;&#160;&#160;оригинальный звук&#160;&#160;&#160;•&#160;&#160;&#160;</span></div>
-                                        </div>
+                                        <span class="tk-author" id="tk-author">Вы</span>
+                                        <span class="tk-info-sep" aria-hidden="true">·</span>
+                                        <span class="tk-desc" id="tk-desc">Описание видео</span>
                                     </div>
 
                             <!-- Custom controls -->
@@ -471,6 +469,17 @@
     <video id="thumb-video" class="hidden-video" muted playsinline preload="metadata" crossorigin="anonymous"></video>
     <video id="seek-thumb-video" class="hidden-video" muted playsinline preload="auto" crossorigin="anonymous" aria-hidden="true"></video>
 
+
+    <!-- One-time account-name card (shown once, ever) -->
+    <div id="account-name-card" class="account-name-card hidden" role="dialog" aria-label="Как к вам обращаться">
+        <div class="account-name-title">Как к вам обращаться?</div>
+        <div class="account-name-sub">Так подпишем ваш аккаунт (TikTok, комментарии). Браузер не может прочитать имя из Windows сам — запишите его так, как оно звучит у вас. Оно останется только на этом устройстве.</div>
+        <div class="account-name-row">
+            <input id="account-name-input" type="text" maxlength="40" autocomplete="off" placeholder="Например, Александр">
+            <button id="account-name-save" class="account-name-save" type="button">Сохранить</button>
+        </div>
+        <button id="account-name-skip" class="account-name-skip" type="button">Пропустить</button>
+    </div>
 
     <!-- Toast -->
     <div id="toast" class="toast" role="status" aria-live="polite"></div>

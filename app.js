@@ -149,11 +149,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const tkCommentCount = $('tk-comment-count');
     const tkSave = $('tk-save');
     const tkSaveIcon = $('tk-save-icon');
-    const tkSaveLabel = $('tk-save-label');
+    const tkSaveCount = $('tk-save-count');
     const tkShare = $('tk-share');
+    const tkShareCount = $('tk-share-count');
     const tkAuthor = $('tk-author');
     const tkDesc = $('tk-desc');
-    const tkMusicText = $('tk-music-text');
+    const tkPausedBadge = $('tk-paused-badge');
     const tkComments = $('tk-comments');
     const tkDrawer = $('tk-drawer');
     const tkBackdrop = $('tk-backdrop');
@@ -257,6 +258,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const likeCountKey = (k) => `wmv_like_count_${k}`;
+    const saveCountKey = (k) => `wmv_save_count_${k}`;
+    const shareCountKey = (k) => `wmv_share_count_${k}`;
     const likedKey = (k) => `wmv_liked_${k}`;
     const dislikedKey = (k) => `wmv_disliked_${k}`;
     const savedKey = (k) => `wmv_saved_${k}`;
@@ -304,12 +307,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const days = Math.floor(hours / 24);
         if (days < 30) return `${days} д назад`;
         return new Date(ts).toLocaleDateString('ru-RU');
-    }
-
-    function slugify(name) {
-        const base = String(name).replace(/\.[^.]+$/, '').toLowerCase();
-        const slug = base.replace(/[^a-z0-9а-яё_]+/gi, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '').slice(0, 24);
-        return slug || 'local';
     }
 
     function hueFromString(str) {
@@ -523,6 +520,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         applyLoopForMode();
         if (persist) storageSet(MODE_KEY, mode);
+        updateTkPausedBadge();
         pokeUI();
     }
 
@@ -565,6 +563,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         welcomeScreen.classList.add('hidden');
         appShell.classList.remove('hidden');
+        setTimeout(showAccountNameCard, 900);
         replayOverlay.classList.add('hidden');
         playerWrapper.classList.remove('video-ended');
         playerWrapper.classList.toggle('audio-mode', currentIsAudio);
@@ -902,6 +901,73 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // =========================================================
+    //  Account name — the user's own name, never the file name.
+    //  Browsers are not allowed to read the Windows profile name,
+    //  so it is asked exactly once and kept in localStorage.
+    // =========================================================
+    function getAccountName() {
+        const stored = (storageGet('wmv_account_name', '') || '').trim();
+        return stored || 'Вы';
+    }
+
+    function applyAccountName() {
+        const name = getAccountName();
+        const initial = (name[0] || 'В').toUpperCase();
+        if (tkAvatar) tkAvatar.textContent = initial;
+        if (tkAuthor) tkAuthor.textContent = name;
+        document.querySelectorAll('.yt-comment-avatar, .tk-comment-avatar, .yt-avatar-me, .tk-drawer-avatar').forEach((el) => {
+            el.textContent = initial;
+        });
+        document.querySelectorAll('.yt-comment-name').forEach((el) => {
+            el.textContent = name;
+        });
+    }
+
+    const accountNameCard = $('account-name-card');
+    const accountNameInput = $('account-name-input');
+    const accountNameSave = $('account-name-save');
+    const accountNameSkip = $('account-name-skip');
+
+    function hideAccountNameCard() {
+        if (accountNameCard) accountNameCard.classList.add('hidden');
+    }
+
+    function showAccountNameCard() {
+        if (!accountNameCard) return;
+        if (storageGet('wmv_account_asked', '0') === '1') return;
+        if ((storageGet('wmv_account_name', '') || '').trim()) return;
+        accountNameCard.classList.remove('hidden');
+        setTimeout(() => { if (accountNameInput) accountNameInput.focus(); }, 60);
+    }
+
+    function commitAccountName() {
+        if (!accountNameInput) return;
+        const value = accountNameInput.value.trim();
+        if (value) {
+            storageSet('wmv_account_name', value);
+            storageSet('wmv_account_asked', '1');
+        }
+        storageSet('wmv_account_asked', '1');
+        applyAccountName();
+        hideAccountNameCard();
+        if (value) showToast(`Готово — теперь вы «${value}»`);
+    }
+
+    if (accountNameSave) accountNameSave.addEventListener('click', commitAccountName);
+    if (accountNameInput) {
+        accountNameInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); commitAccountName(); }
+            if (e.key === 'Escape') { e.preventDefault(); accountNameSkip && accountNameSkip.click(); }
+        });
+    }
+    if (accountNameSkip) {
+        accountNameSkip.addEventListener('click', () => {
+            storageSet('wmv_account_asked', '1');
+            hideAccountNameCard();
+        });
+    }
+
+    // =========================================================
     //  Video info block (title / description / channel)
     // =========================================================
     function refreshVideoInfo() {
@@ -911,13 +977,8 @@ document.addEventListener('DOMContentLoaded', () => {
         ytDescriptionText.textContent = buildDescription();
         document.title = `${displayName} - WatchMyVideo`;
 
-        const handle = slugify(displayName);
-        tkAvatar.textContent = (handle[0] || 'W').toUpperCase();
-        tkAuthor.textContent = '@' + handle;
+        applyAccountName();
         tkDesc.textContent = displayName;
-        const musicLine = `оригинальный звук — ${tkAuthor.textContent}`;
-        const musicSep = '\u00A0\u00A0\u00A0•\u00A0\u00A0\u00A0';
-        tkMusicText.textContent = musicLine + musicSep + musicLine + musicSep;
     }
 
     function buildDescription() {
@@ -1035,8 +1096,11 @@ document.addEventListener('DOMContentLoaded', () => {
         tkLike.setAttribute('aria-pressed', liked.liked ? 'true' : 'false');
         tkSave.classList.toggle('saved', saved);
         tkSave.setAttribute('aria-pressed', saved ? 'true' : 'false');
-        tkSaveIcon.className = (saved ? 'fa-solid' : 'fa-regular') + ' fa-bookmark';
-        tkSaveLabel.textContent = saved ? 'Сохранено' : 'В избранное';
+        tkSaveIcon.className = 'fa-solid fa-bookmark'; // rail icons are always solid — never outline
+        const saveCount = key ? parseInt(storageGet(saveCountKey(key), '0'), 10) || 0 : 0;
+        const shareCount = key ? parseInt(storageGet(shareCountKey(key), '0'), 10) || 0 : 0;
+        if (tkSaveCount) tkSaveCount.textContent = formatCount(saveCount);
+        if (tkShareCount) tkShareCount.textContent = formatCount(shareCount);
         tkFollow.classList.toggle('subscribed', subscribed);
         tkFollow.setAttribute('aria-pressed', subscribed ? 'true' : 'false');
         tkFollowIcon.className = subscribed ? 'fa-solid fa-check' : 'fa-solid fa-plus';
@@ -1077,6 +1141,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!currentVideoKey) return;
         const saved = storageGet(savedKey(currentVideoKey), '0') === '1';
         storageSet(savedKey(currentVideoKey), saved ? '0' : '1');
+        const count = parseInt(storageGet(saveCountKey(currentVideoKey), '0'), 10) || 0;
+        storageSet(saveCountKey(currentVideoKey), String(Math.max(0, count + (saved ? -1 : 1))));
         refreshSocialUI();
         showToast(saved ? 'Удалено из сохранённого' : 'Сохранено к вам');
     }
@@ -1099,6 +1165,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Share / Download — requested inert stubs («заглушки»)
     function shareStub() {
+        if (currentVideoKey) {
+            const count = parseInt(storageGet(shareCountKey(currentVideoKey), '0'), 10) || 0;
+            storageSet(shareCountKey(currentVideoKey), String(count + 1));
+            refreshSocialUI();
+        }
         try {
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(window.location.href).catch(() => {});
@@ -1140,7 +1211,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const avatar = document.createElement('div');
         avatar.className = 'yt-comment-avatar';
-        avatar.textContent = 'Я';
+        avatar.textContent = (getAccountName()[0] || 'В').toUpperCase();
 
         const body = document.createElement('div');
         body.className = 'yt-comment-body';
@@ -1149,7 +1220,7 @@ document.addEventListener('DOMContentLoaded', () => {
         meta.className = 'yt-comment-meta';
         const name = document.createElement('span');
         name.className = 'yt-comment-name';
-        name.textContent = 'Вы';
+        name.textContent = getAccountName();
         const time = document.createElement('span');
         time.textContent = timeAgo(comment.ts);
         meta.appendChild(name);
@@ -1183,14 +1254,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const avatar = document.createElement('div');
         avatar.className = 'tk-comment-avatar';
-        avatar.textContent = 'Я';
+        avatar.textContent = (getAccountName()[0] || 'В').toUpperCase();
 
         const body = document.createElement('div');
         body.className = 'tk-comment-body';
 
         const name = document.createElement('div');
         name.className = 'tk-comment-name';
-        name.textContent = '@you';
+        name.textContent = getAccountName();
 
         const text = document.createElement('div');
         text.className = 'tk-comment-text';
@@ -1333,7 +1404,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function updateTkPausedBadge() {
+        if (!tkPausedBadge) return;
+        const show = document.body.classList.contains('mode-tiktok')
+            && video.paused
+            && !video.ended
+            && !appShell.classList.contains('hidden')
+            && replayOverlay.classList.contains('hidden');
+        tkPausedBadge.classList.toggle('visible', show);
+    }
+
     function flashCenterIcon(iconClass) {
+        if (document.body.classList.contains('mode-tiktok')) {
+            // TikTok: no pause/unpause animation at all — the static badge owns the state
+            updateTkPausedBadge();
+            return;
+        }
         centerFlashIcon.className = iconClass;
         centerFlash.classList.remove('show');
         void centerFlash.offsetWidth; // restart animation
@@ -1390,11 +1476,13 @@ document.addEventListener('DOMContentLoaded', () => {
         playerWrapper.classList.remove('video-ended');
         updatePlayPauseButton(true);
         replayOverlay.classList.add('hidden');
+        updateTkPausedBadge();
         if (video.readyState >= 2) flashCenterIcon('fa-solid fa-play');
     });
 
     video.addEventListener('pause', () => {
         updatePlayPauseButton(false);
+        updateTkPausedBadge();
         if (interpolationState.active) {
             if (interpolationState.rafId) {
                 cancelAnimationFrame(interpolationState.rafId);
@@ -1407,6 +1495,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     video.addEventListener('ended', () => {
+        updateTkPausedBadge();
         if (Date.now() < infiniteFixGuard) {
             // Artificial seek used only to measure the real duration — reset silently.
             infiniteFixGuard = 0;
