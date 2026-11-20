@@ -130,6 +130,7 @@
                             <div id="video-context-menu" class="context-menu hidden" role="menu" aria-label="Меню плеера">
                                 <button id="ctx-stats-toggle" class="context-menu-item" type="button" role="menuitemcheckbox" aria-checked="false">
                                     <span class="context-menu-check" aria-hidden="true"><i class="fa-solid fa-check"></i></span>
+                                    <span class="context-menu-icon" aria-hidden="true"><i class="fa-solid fa-chart-simple"></i></span>
                                     <span class="context-menu-label">Статистика для сисадминов</span>
                                 </button>
                             </div>
@@ -413,9 +414,33 @@
                                     <div class="yt-avatar" id="yt-avatar">W</div>
                                     <div class="yt-channel-meta">
                                         <div class="yt-channel-name">WatchMyVideo</div>
-                                        <div class="yt-channel-sub">Локальные видео · <span id="yt-channel-count">0</span> видео</div>
+                                        <div class="yt-channel-sub"><span id="yt-channel-count"></span></div>
                                     </div>
-                                    <button id="btn-subscribe" class="yt-sub-btn" type="button" aria-pressed="false">Подписаться</button>
+                                    <div class="yt-sub-wrap" id="yt-sub-wrap">
+                                        <button id="btn-subscribe" class="yt-sub-btn" type="button" aria-pressed="false">Подписаться</button>
+                                        <div class="yt-sub-menu hidden" id="yt-sub-menu" role="menu" aria-label="Уведомления канала">
+                                            <button class="yt-sub-menu-item" type="button" data-notify="all" role="menuitemradio" aria-checked="false">
+                                                <span class="ring-bell" aria-hidden="true"><i class="fa-regular fa-bell"></i></span>
+                                                <span>Все</span>
+                                                <i class="fa-solid fa-check yt-sub-menu-check" aria-hidden="true"></i>
+                                            </button>
+                                            <button class="yt-sub-menu-item" type="button" data-notify="pref" role="menuitemradio" aria-checked="false">
+                                                <i class="fa-regular fa-bell" aria-hidden="true"></i>
+                                                <span>На основе предпочтений</span>
+                                                <i class="fa-solid fa-check yt-sub-menu-check" aria-hidden="true"></i>
+                                            </button>
+                                            <button class="yt-sub-menu-item" type="button" data-notify="none" role="menuitemradio" aria-checked="false">
+                                                <i class="fa-regular fa-bell-slash" aria-hidden="true"></i>
+                                                <span>Никакие</span>
+                                                <i class="fa-solid fa-check yt-sub-menu-check" aria-hidden="true"></i>
+                                            </button>
+                                            <div class="yt-sub-menu-divider" aria-hidden="true"></div>
+                                            <button class="yt-sub-menu-item" type="button" id="yt-sub-unsubscribe">
+                                                <i class="fa-regular fa-user-xmark" aria-hidden="true"></i>
+                                                <span>Отменить подписку</span>
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="yt-actions">
                                     <div class="yt-like-group" role="group" aria-label="Оценить видео">
@@ -423,14 +448,11 @@
                                             <i class="fa-solid fa-thumbs-up"></i><span id="like-count">0</span>
                                         </button>
                                         <button id="btn-dislike" class="yt-action yt-action-grouped yt-action-divider" type="button" aria-pressed="false" title="Мне не нравится">
-                                            <i class="fa-solid fa-thumbs-down"></i>
+                                            <i class="fa-regular fa-thumbs-down"></i>
                                         </button>
                                     </div>
                                     <button id="btn-share-yt" class="yt-action" type="button" title="Поделиться">
-                                        <i class="fa-solid fa-share"></i><span>Поделиться</span>
-                                    </button>
-                                    <button id="btn-download" class="yt-action" type="button" title="Скачать файл">
-                                        <i class="fa-solid fa-download"></i><span>Скачать</span>
+                                        <i class="fa-regular fa-share-from-square"></i><span>Поделиться</span>
                                     </button>
                                     <button id="btn-save" class="yt-action" type="button" aria-pressed="false" title="Сохранить к себе">
                                         <i class="fa-regular fa-bookmark" id="save-icon"></i><span id="save-label">Сохранить</span>
@@ -471,6 +493,17 @@
     <video id="thumb-video" class="hidden-video" muted playsinline preload="metadata" crossorigin="anonymous"></video>
     <video id="seek-thumb-video" class="hidden-video" muted playsinline preload="auto" crossorigin="anonymous" aria-hidden="true"></video>
 
+
+    <!-- Unsubscribe confirmation dialog -->
+    <div id="unsub-modal" class="unsub-modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="unsub-modal-title">
+        <div class="unsub-modal">
+            <p class="unsub-modal-title" id="unsub-modal-title">Отказаться от подписки на канал «WatchMyVideo»?</p>
+            <div class="unsub-modal-actions">
+                <button id="unsub-cancel" class="unsub-btn unsub-btn-cancel" type="button">Отмена</button>
+                <button id="unsub-confirm" class="unsub-btn unsub-btn-confirm" type="button">Отказаться от подписки</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Toast -->
     <div id="toast" class="toast" role="status" aria-live="polite"></div>

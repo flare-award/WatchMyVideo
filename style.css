@@ -603,11 +603,11 @@ body.theater-mode.mode-youtube .yt-grid {
     max-width: none;
     grid-template-columns: minmax(0, 1fr) 440px;
     padding: 0 0 56px; /* full-bleed player — exactly like YouTube's theater mode */
-    gap: 24px;
+    gap: 6px 24px; /* tight row gap: title sits right under the player */
 }
 
 body.theater-mode.mode-youtube .yt-info {
-    padding: 12px 0 0 24px;
+    padding: 8px 0 0 24px;
 }
 
 body.theater-mode.mode-youtube .yt-comments {
@@ -615,7 +615,7 @@ body.theater-mode.mode-youtube .yt-comments {
 }
 
 body.theater-mode.mode-youtube .yt-sidebar {
-    padding: 12px 24px 0 0;
+    padding: 8px 24px 0 0;
 }
 
 body.theater-mode.mode-youtube .player-column {
@@ -1165,12 +1165,6 @@ body.idle .player-wrapper {
     text-align: left;
 }
 
-.subtitle-upload i {
-    width: 16px;
-    text-align: center;
-    color: #3ea6ff;
-}
-
 .controls-row {
     display: flex;
     align-items: center;
@@ -1538,6 +1532,25 @@ body.studio-light .ambient-canvas {
 
 .settings-view {
     padding: 8px 0;
+}
+
+/* Sub-view navigation: forward slides in from the right, back — from the left */
+@keyframes settingsSlideFwd {
+    from { opacity: 0; transform: translateX(18px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes settingsSlideBack {
+    from { opacity: 0; transform: translateX(-18px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+.settings-view.anim-fwd {
+    animation: settingsSlideFwd 0.18s ease;
+}
+
+.settings-view.anim-back {
+    animation: settingsSlideBack 0.18s ease;
 }
 
 .settings-item {
@@ -1944,8 +1957,18 @@ input:checked + .slider-toggle:before {
     white-space: nowrap;
 }
 
-.yt-sub-btn {
+.yt-sub-wrap {
+    position: relative;
     margin-left: 10px;
+    flex-shrink: 0;
+}
+
+.yt-sub-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    line-height: 1;
     height: 36px;
     padding: 0 16px;
     border: none;
@@ -1965,7 +1988,183 @@ input:checked + .slider-toggle:before {
 
 .yt-sub-btn.subscribed {
     background: var(--surface-2);
-    color: #aaa;
+    color: #fff;
+}
+
+.yt-sub-btn.subscribed:hover {
+    background: var(--surface-hover);
+}
+
+.yt-sub-btn .yt-sub-chevron {
+    font-size: 0.68rem;
+}
+
+/* Notification menu — styled after the subscribe button itself */
+.yt-sub-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    min-width: 264px;
+    background: var(--surface-2);
+    border-radius: 14px;
+    padding: 6px;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+    z-index: 80;
+    animation: menuFadeIn 0.16s ease;
+}
+
+.yt-sub-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 9px 10px;
+    border: none;
+    background: transparent;
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 400;
+    line-height: 1.25;
+    border-radius: 9px;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.yt-sub-menu-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.yt-sub-menu-item > i {
+    width: 20px;
+    text-align: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.yt-sub-menu-item .ring-bell {
+    width: 20px;
+    display: inline-flex;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.yt-sub-menu-check {
+    margin-left: auto;
+    width: auto !important;
+    font-size: 0.78rem !important;
+    visibility: hidden;
+}
+
+.yt-sub-menu-item.selected .yt-sub-menu-check {
+    visibility: visible;
+}
+
+.yt-sub-menu-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.12);
+    margin: 6px 4px;
+}
+
+/* Ringing-bell flourish: two sound arcs over the regular bell glyph */
+.ring-bell {
+    position: relative;
+}
+
+.ring-bell::before,
+.ring-bell::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    width: 7px;
+    height: 7px;
+    border: 1.5px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.ring-bell::before {
+    left: 0;
+    transform: rotate(-42deg);
+}
+
+.ring-bell::after {
+    right: 0;
+    transform: rotate(42deg);
+}
+
+/* Unsubscribe confirmation dialog */
+.unsub-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 400;
+    padding: 16px;
+}
+
+.unsub-modal {
+    background: #212121;
+    border-radius: 16px;
+    width: min(420px, calc(100vw - 48px));
+    padding: 24px 24px 18px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+    animation: unsubModalIn 0.16s ease;
+}
+
+@keyframes unsubModalIn {
+    from { opacity: 0; transform: scale(0.96); }
+    to   { opacity: 1; transform: scale(1); }
+}
+
+.unsub-modal-title {
+    margin: 0;
+    text-align: center;
+    color: #a8a8a8;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.45;
+}
+
+.unsub-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+    margin-top: 26px;
+}
+
+.unsub-btn {
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 400;
+    line-height: 1;
+    padding: 10px 14px;
+    border-radius: 18px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.unsub-btn-cancel {
+    color: #fff;
+}
+
+.unsub-btn-cancel:hover {
+    background: rgba(255, 255, 255, 0.09);
+}
+
+.unsub-btn-confirm {
+    color: #3EA6FF;
+}
+
+.unsub-btn-confirm:hover {
+    background: rgba(62, 166, 255, 0.13);
 }
 
 .yt-sub-btn.subscribed:hover {
@@ -2049,6 +2248,15 @@ input:checked + .slider-toggle:before {
 
 .yt-description:hover {
     background: var(--surface-hover);
+}
+
+.yt-desc-stat {
+    font-weight: 600;
+}
+
+.yt-desc-size {
+    font-weight: 600;
+    color: #8a8a8a;
 }
 
 .yt-description-text {
@@ -2380,6 +2588,15 @@ input:checked + .slider-toggle:before {
     display: block;
 }
 
+/* Music covers keep their whole square artwork — dark bars on the sides */
+.suggest-thumb.is-audio {
+    background: #101013;
+}
+
+.suggest-thumb.is-audio img {
+    object-fit: contain;
+}
+
 .suggest-thumb-icon {
     font-size: 1.6rem;
     color: rgba(255, 255, 255, 0.75);
@@ -2539,7 +2756,7 @@ input:checked + .slider-toggle:before {
     position: absolute;
     left: 12px;
     right: 76px;
-    bottom: 12px;
+    bottom: 26px;
     color: #fff;
     z-index: 26;
     display: none;
@@ -3030,6 +3247,8 @@ body.mode-tiktok .progress-container {
 
 body.mode-tiktok .progress-played {
     background: #ffffff;
+    opacity: 1;
+    z-index: 1;
 }
 
 body.mode-tiktok .progress-hover {
@@ -3590,6 +3809,15 @@ body.mode-tiktok .stats-overlay {
     text-align: center;
     color: #3ea6ff;
     visibility: hidden;
+    flex-shrink: 0;
+}
+
+.context-menu-icon {
+    width: 16px;
+    display: inline-flex;
+    justify-content: center;
+    color: #9a9a9a;
+    font-size: 0.85rem;
     flex-shrink: 0;
 }
 

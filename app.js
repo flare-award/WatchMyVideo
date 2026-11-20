@@ -34,6 +34,10 @@ document.addEventListener('DOMContentLoaded', () => {
         audioCover.addEventListener('contextmenu', (e) => {
             if (coverIsGenerated) e.preventDefault(); // «Сохранить картинку» would expose the generated art
         });
+        // Repaint the ambient glow from the cover as soon as it is decoded
+        audioCover.addEventListener('load', () => {
+            if (currentIsAudio && studioLight) paintAmbientFrame();
+        });
     }
     const qualityCanvasEl = $('quality-canvas');
     const btnLoopToggle = $('btn-loop-toggle');
@@ -125,7 +129,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnDislike = $('btn-dislike');
     const likeCountEl = $('like-count');
     const btnShareYt = $('btn-share-yt');
-    const btnDownload = $('btn-download');
     const btnSave = $('btn-save');
     const saveIcon = $('save-icon');
     const saveLabel = $('save-label');
@@ -832,8 +835,40 @@ document.addEventListener('DOMContentLoaded', () => {
         updateChannelCount();
     }
 
+    // The channel's subscriber count: generated once, then kept — formatted
+    // the way YouTube does it in Russian (тыс. / млн. / млрд.).
+    const CHANNEL_SUBS_KEY = 'wmv_channel_subs';
+
+    function channelSubsCount() {
+        let n = parseInt(storageGet(CHANNEL_SUBS_KEY, '0'), 10);
+        if (!n || n <= 0) {
+            const r = Math.random();
+            if (r < 0.45) n = 1500 + Math.floor(Math.random() * 948500);
+            else if (r < 0.9) n = 1050000 + Math.floor(Math.random() * 918950000);
+            else n = 1020000000 + Math.floor(Math.random() * 2380000000);
+            // Round to three significant digits so the count looks natural
+            const mag = Math.pow(10, Math.max(0, String(Math.floor(n)).length - 3));
+            n = Math.round(n / mag) * mag;
+            storageSet(CHANNEL_SUBS_KEY, String(n));
+        }
+        return n;
+    }
+
+    function trimScaled(v) {
+        if (v >= 100) return String(Math.round(v));
+        const s = (Math.round(v * 10) / 10).toFixed(1).replace('.', ',');
+        return s.endsWith(',0') ? s.slice(0, -2) : s;
+    }
+
+    function formatSubscribers(n) {
+        if (n >= 1e9) return `${trimScaled(n / 1e9)} млрд подписчиков`;
+        if (n >= 1e6) return `${trimScaled(n / 1e6)} млн подписчиков`;
+        if (n >= 1e3) return `${trimScaled(n / 1e3)} тыс. подписчиков`;
+        return `${n} ${pluralRu(n, ['подписчик', 'подписчика', 'подписчиков'])}`;
+    }
+
     function updateChannelCount() {
-        ytChannelCount.textContent = String(recentVideos.length);
+        ytChannelCount.textContent = formatSubscribers(channelSubsCount());
     }
 
     function currentQuery() {
@@ -865,7 +900,7 @@ document.addEventListener('DOMContentLoaded', () => {
             item.title = stripExtension(v.title);
 
             const thumb = document.createElement('div');
-            thumb.className = 'suggest-thumb';
+            thumb.className = 'suggest-thumb' + (v.isAudio ? ' is-audio' : '');
             thumb.style.setProperty('--hue', String(v.hue || 0));
             if (v.thumb) {
                 const img = document.createElement('img');
@@ -1017,26 +1052,34 @@ document.addEventListener('DOMContentLoaded', () => {
         const displayName = stripExtension(currentFileName) || currentFileName;
         ytTitle.textContent = displayName;
         ytAvatar.textContent = (displayName[0] || 'W').toUpperCase();
-        ytDescriptionText.textContent = buildDescription();
+        ytDescriptionText.innerHTML = buildDescription();
         document.title = `${displayName} - WatchMyVideo`;
 
         applyAccountName();
         tkDesc.textContent = displayName;
     }
 
+    // Short Russian month names for the release date («15 мар. 2024 г.»)
+    const RU_MONTHS_SHORT = ['янв.', 'февр.', 'мар.', 'апр.', 'мая', 'июн.', 'июл.', 'авг.', 'сент.', 'окт.', 'нояб.', 'дек.'];
+
+    function formatDateRu(ts) {
+        const d = new Date(ts);
+        return `${d.getDate()} ${RU_MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}\u00A0г.`;
+    }
+
     function buildDescription() {
         const parts = [];
         const stats = ensureVideoStats(currentVideoKey);
         if (stats) {
-            parts.push(`${formatViewsFull(stats.views)} ${pluralRu(stats.views, ['просмотр', 'просмотра', 'просмотров'])}`);
+            parts.push(`<span class="yt-desc-stat">${formatViewsFull(stats.views)} ${pluralRu(stats.views, ['просмотр', 'просмотра', 'просмотров'])}</span>`);
         }
         if (currentFileCreated) {
             try {
-                parts.push(new Date(currentFileCreated).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }));
+                parts.push(`<span class="yt-desc-stat">${formatDateRu(currentFileCreated)}</span>`);
             } catch (_) { /* unreadable mtime — skip the date */ }
         }
-        if (currentFileSize) parts.push(formatBytes(currentFileSize));
-        return parts.join('  ·  ');
+        if (currentFileSize) parts.push(`<span class="yt-desc-size">${formatBytes(currentFileSize)}</span>`);
+        return parts.join(' ');
     }
 
     // Flag for files that report an infinite duration until they are seeked once
@@ -1070,7 +1113,7 @@ document.addEventListener('DOMContentLoaded', () => {
             computeQualities();
             updateQualityUI();
         }
-        ytDescriptionText.textContent = buildDescription();
+        ytDescriptionText.innerHTML = buildDescription();
         const active = recentVideos.find((v) => v.key === currentVideoKey);
         if (active) {
             active.durationLabel = formatTime(video.duration);
@@ -1145,9 +1188,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnSave.setAttribute('aria-pressed', saved ? 'true' : 'false');
         saveIcon.className = (saved ? 'fa-solid' : 'fa-regular') + ' fa-bookmark';
         saveLabel.textContent = saved ? 'Сохранено' : 'Сохранить';
-        btnSubscribe.classList.toggle('subscribed', subscribed);
-        btnSubscribe.setAttribute('aria-pressed', subscribed ? 'true' : 'false');
-        btnSubscribe.textContent = subscribed ? 'Вы подписались' : 'Подписаться';
+        renderSubscribeButton(subscribed);
 
         // TikTok rail
         tkLikeCount.textContent = formatCount(liked.count);
@@ -1223,6 +1264,88 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast(next ? 'Вы подписались' : 'Вы отписались');
     }
 
+    // =========================================================
+    //  Subscribe button: notification menu + unsubscribe dialog
+    // =========================================================
+    const NOTIFY_KEY = 'wmv_notify_level';
+    let notifyLevel = storageGet(NOTIFY_KEY, 'pref');
+    if (!['all', 'pref', 'none'].includes(notifyLevel)) notifyLevel = 'pref';
+    const ytSubWrap = $('yt-sub-wrap');
+    const ytSubMenu = $('yt-sub-menu');
+    const unsubModal = $('unsub-modal');
+
+    function paintSubMenuSelection() {
+        if (!ytSubMenu) return;
+        ytSubMenu.querySelectorAll('[data-notify]').forEach((item) => {
+            const sel = item.getAttribute('data-notify') === notifyLevel;
+            item.classList.toggle('selected', sel);
+            item.setAttribute('aria-checked', sel ? 'true' : 'false');
+        });
+    }
+
+    function closeSubMenu() {
+        if (ytSubMenu) ytSubMenu.classList.add('hidden');
+        btnSubscribe.setAttribute('aria-expanded', 'false');
+    }
+
+    function toggleSubMenu() {
+        if (!ytSubMenu) return;
+        const willOpen = ytSubMenu.classList.contains('hidden');
+        ytSubMenu.classList.toggle('hidden', !willOpen);
+        btnSubscribe.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+        if (willOpen) paintSubMenuSelection();
+    }
+
+    function renderSubscribeButton(subscribed) {
+        btnSubscribe.classList.toggle('subscribed', subscribed);
+        btnSubscribe.setAttribute('aria-pressed', subscribed ? 'true' : 'false');
+        if (subscribed) {
+            btnSubscribe.innerHTML = '<i class="fa-regular fa-bell" aria-hidden="true"></i><span>Вы подписаны</span><i class="fa-solid fa-chevron-down yt-sub-chevron" aria-hidden="true"></i>';
+            btnSubscribe.setAttribute('aria-haspopup', 'menu');
+        } else {
+            btnSubscribe.textContent = 'Подписаться';
+            btnSubscribe.removeAttribute('aria-haspopup');
+            btnSubscribe.removeAttribute('aria-expanded');
+            closeSubMenu();
+        }
+        paintSubMenuSelection();
+    }
+
+    function openUnsubModal() { if (unsubModal) unsubModal.classList.remove('hidden'); }
+    function closeUnsubModal() { if (unsubModal) unsubModal.classList.add('hidden'); }
+
+    if (ytSubMenu) {
+        ytSubMenu.querySelectorAll('[data-notify]').forEach((item) => {
+            item.addEventListener('click', () => {
+                notifyLevel = item.getAttribute('data-notify') || 'pref';
+                storageSet(NOTIFY_KEY, notifyLevel);
+                paintSubMenuSelection();
+                closeSubMenu();
+            });
+        });
+        const unsubItem = $('yt-sub-unsubscribe');
+        if (unsubItem) unsubItem.addEventListener('click', () => { closeSubMenu(); openUnsubModal(); });
+    }
+    document.addEventListener('click', (e) => {
+        if (ytSubWrap && !ytSubWrap.contains(e.target)) closeSubMenu();
+    });
+    if (unsubModal) {
+        unsubModal.addEventListener('click', (e) => { if (e.target === unsubModal) closeUnsubModal(); });
+        const cancelBtn = $('unsub-cancel');
+        const confirmBtn = $('unsub-confirm');
+        if (cancelBtn) cancelBtn.addEventListener('click', closeUnsubModal);
+        if (confirmBtn) confirmBtn.addEventListener('click', () => {
+            storageSet(SUBSCRIBED_KEY, '0');
+            closeUnsubModal();
+            clearTimeout(tkFollowHideTimer);
+            tkFollow.classList.remove('follow-hidden');
+            refreshSocialUI();
+        });
+    }
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { closeSubMenu(); closeUnsubModal(); }
+    });
+
     // Share / Download — requested inert stubs («заглушки»)
     function shareStub() {
         if (currentVideoKey) {
@@ -1249,10 +1372,13 @@ document.addEventListener('DOMContentLoaded', () => {
     btnShareYt.addEventListener('click', shareStub);
     btnSave.addEventListener('click', toggleSave);
     tkSave.addEventListener('click', toggleSave);
-    btnSubscribe.addEventListener('click', toggleSubscribe);
+    btnSubscribe.addEventListener('click', (e) => {
+        const subscribed = storageGet(SUBSCRIBED_KEY, '0') === '1';
+        if (!subscribed) { toggleSubscribe(); return; }
+        e.stopPropagation();
+        toggleSubMenu();
+    });
     tkFollow.addEventListener('click', toggleSubscribe);
-
-    btnDownload.addEventListener('click', downloadStub);
 
     // =========================================================
     //  Comments (YouTube section + TikTok drawer, shared storage)
@@ -2200,8 +2326,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (canvas.width !== W) { canvas.width = W; canvas.height = H; }
                 const ctx = canvas.getContext('2d');
                 if (currentIsAudio) {
-                    // Static soft radial in the track's own hue (audio has no frames)
-                    const hue = hueFromString(currentFileName || 'audio');
+                    // Ambient light for music takes its colours from the cover
+                    // itself, so the glow always matches what is on screen
+                    const cover = audioCover;
+                    if (cover && cover.complete && cover.naturalWidth > 0) {
+                        const iw = cover.naturalWidth, ih = cover.naturalHeight;
+                        const s = Math.max(W / iw, H / ih);
+                        const dw = iw * s, dh = ih * s;
+                        ctx.clearRect(0, 0, W, H);
+                        ctx.drawImage(cover, (W - dw) / 2, (H - dh) / 2, dw, dh);
+                        return;
+                    }
+                    // Cover not decoded yet — fall back to the same hue the
+                    // generated cover uses (title without the extension)
+                    const hue = hueFromString(stripExtension(currentFileName || '') || 'audio');
                     const g = ctx.createRadialGradient(W / 2, H / 2, 6, W / 2, H / 2, W * 0.75);
                     g.addColorStop(0, `hsl(${hue} 62% 48%)`);
                     g.addColorStop(0.55, `hsl(${(hue + 32) % 360} 52% 26%)`);
@@ -3653,7 +3791,7 @@ void main() {
         const upload = document.createElement('button');
         upload.type = 'button';
         upload.className = 'settings-option subtitle-upload';
-        upload.innerHTML = '<i class="fa-solid fa-upload" aria-hidden="true"></i><span>Загрузить…</span>';
+        upload.innerHTML = '<span>Загрузить…</span>';
         upload.addEventListener('click', (ev) => {
             ev.stopPropagation(); // keep the menu open and the switch scoped to subtitles
             subFileInput.click();
@@ -3889,8 +4027,13 @@ void main() {
     });
 
     function switchSettingsView(viewElement) {
-        settingsMenu.querySelectorAll('.settings-view').forEach((v) => v.classList.add('hidden'));
+        settingsMenu.querySelectorAll('.settings-view').forEach((v) => {
+            v.classList.add('hidden');
+            v.classList.remove('anim-fwd', 'anim-back');
+        });
         viewElement.classList.remove('hidden');
+        // Forward into a sub-view slides from the right, back — from the left
+        viewElement.classList.add(viewElement === settingsMain ? 'anim-back' : 'anim-fwd');
     }
 
     settingsMenu.querySelectorAll('.settings-item[data-action]').forEach((item) => {
