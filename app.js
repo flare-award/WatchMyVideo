@@ -2258,12 +2258,46 @@ document.addEventListener('DOMContentLoaded', () => {
     let fpsLastMediaTime = 0;
     let fpsSampling = false;
 
+    let sourceMinDim = 0;      // min(videoWidth, videoHeight) of the loaded file
+    // rAF-measured refresh rate of the current display. A ?displayHz=N query
+    // overrides the measurement — escape hatch for adaptive-sync displays
+    // whose reported cadence is not their actual refresh rate.
+    let displayHzOverride = 0;
+    try {
+        const v = parseFloat(new URLSearchParams(window.location.search).get('displayHz') || '0');
+        if (v >= 30 && v <= 240) displayHzOverride = v;
+    } catch (_) { displayHzOverride = 0; }
+    let measuredDisplayHz = displayHzOverride;
     function qualityLabel(height) {
         const h = Number(height) || 0;
         if (!h) return 'Авто';
-        // fps is always shown; if the real rate is not measurable, 60 is assumed
+        // fps is always shown; if the real rate is not measurable, 60 is assumed.
+        // The 4K rung of a non-4K source interpolates to the display's refresh
+        // rate — advertise the rate the user will actually get (measured).
+        if (h === 2160 && sourceMinDim > 0 && sourceMinDim < 2160 && measuredDisplayHz >= 100) {
+            return `2160p${Math.round(measuredDisplayHz)}`;
+        }
         return `${h}p${knownFps || 60}`;
     }
+    // One-off display refresh measurement (rAF cadence) — decides whether the
+    // 4K rung may promise real 120/144 fps instead of the source rate.
+    (function startDisplayHzProbe() {
+        let last = 0;
+        const deltas = [];
+        const step = (now) => {
+            if (last) deltas.push(now - last);
+            last = now;
+            if (deltas.length < 45) { requestAnimationFrame(step); return; }
+            const sorted = deltas.slice().sort((a, b) => a - b);
+            const mid = sorted[Math.floor(sorted.length / 2)];
+            if (!displayHzOverride) {
+                const hz = mid > 0 ? Math.round(1000 / mid) : 0;
+                if (hz > measuredDisplayHz) measuredDisplayHz = hz;
+            }
+            if (updateQualityUI) updateQualityUI();
+        };
+        requestAnimationFrame(step);
+    })();
 
     function resetFpsSampler() {
         knownFps = null;
@@ -2290,8 +2324,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const mid = sorted[Math.floor(sorted.length / 2)];
                 const fps = Math.round(1 / mid);
                 fpsSampling = false;
-                if (fps >= 10 && fps <= 240 && fps !== knownFps) {
-                    knownFps = fps;
+                // Snap to the nearest standard rate (30fps content measured as 31 is still 30)
+                const standards = [10, 15, 24, 25, 30, 48, 50, 60, 90, 120, 144, 240];
+                let snapped = fps;
+                for (const std of standards) {
+                    if (Math.abs(fps - std) <= 2) { snapped = std; break; }
+                }
+                if (snapped >= 10 && snapped <= 240 && snapped !== knownFps) {
+                    knownFps = snapped;
                     if (updateQualityUI) updateQualityUI();
                 }
                 return;
@@ -2314,6 +2354,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const vw = video.videoWidth || 0;
         const vh = video.videoHeight || 0;
         const minDim = Math.min(vw, vh);
+        sourceMinDim = minDim;
         if (!minDim) {
             availableQualities = [{ key: 'original', label: '0', height: 0, original: true }];
             currentQualityKey = 'original';
@@ -2409,11 +2450,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const vsSource = 'attribute vec2 aPos; varying vec2 vUv; void main() { vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }';
         const fsSource = `precision highp float;
 uniform sampler2D uTex;
-uniform vec2 uTexel;
-uniform float uSharp;
-uniform float uContrast;
-uniform float uSat;
-uniform float uWarm;
 uniform float uDegrade;
 uniform float uBlockPx;
 uniform float uQuant;
@@ -2511,19 +2547,9 @@ void main() {
         rec += n;
         outc = clamp(rec, 0.0, 1.0);
     } else {
-        vec3 avg = (
-            texture2D(uTex, vUv + vec2(0.0, uTexel.y)).rgb +
-            texture2D(uTex, vUv - vec2(0.0, uTexel.y)).rgb +
-            texture2D(uTex, vUv + vec2(uTexel.x, 0.0)).rgb +
-            texture2D(uTex, vUv - vec2(uTexel.x, 0.0)).rgb
-        ) * 0.25;
-        outc = clamp(c + (c - avg) * uSharp, 0.0, 1.0);
+        // Neutral pass — the quality proxy never recolors the video.
+        outc = c;
     }
-    outc = clamp((outc - 0.5) * uContrast + 0.5, 0.0, 1.0);
-    float lu = dot(outc, vec3(0.2126, 0.7152, 0.0722));
-    outc = clamp(mix(vec3(lu), outc, uSat), 0.0, 1.0);
-    outc.r = clamp(outc.r * (1.0 + uWarm * 0.05), 0.0, 1.0);
-    outc.b = clamp(outc.b * (1.0 - uWarm * 0.045), 0.0, 1.0);
     gl_FragColor = vec4(outc, 1.0);
 }`;
         const compile = (type, source) => {
@@ -2563,11 +2589,6 @@ void main() {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
         glLocations = {
-            uTexel: gl.getUniformLocation(program, 'uTexel'),
-            uSharp: gl.getUniformLocation(program, 'uSharp'),
-            uContrast: gl.getUniformLocation(program, 'uContrast'),
-            uSat: gl.getUniformLocation(program, 'uSat'),
-            uWarm: gl.getUniformLocation(program, 'uWarm'),
             uDegrade: gl.getUniformLocation(program, 'uDegrade'),
             uBlockPx: gl.getUniformLocation(program, 'uBlockPx'),
             uQuant: gl.getUniformLocation(program, 'uQuant'),
@@ -2583,13 +2604,6 @@ void main() {
         glProgram = program;
         glUsable = true;
         return true;
-    }
-
-    // Upscale rungs get a strong-but-sane enhancement; downscale is a clean resample
-    function enhanceParamsForHeight(height) {
-        if (height >= 2160) return { sharp: 0.85, contrast: 1.13, sat: 1.07, warm: 0.6 };
-        if (height >= 1440) return { sharp: 0.65, contrast: 1.10, sat: 1.06, warm: 0.5 };
-        return { sharp: 0, contrast: 1, sat: 1, warm: 0 };
     }
 
     // Artificial low rungs: model a real low-bitrate YouTube/Twitch stream —
@@ -2628,18 +2642,10 @@ void main() {
             return; // frame not decodable yet
         }
         gl.viewport(0, 0, qualityCanvas.width, qualityCanvas.height);
-        const minDim = Math.min(qualityCanvas.width, qualityCanvas.height);
-        const p = degradeState.active ? degradeState.params : enhanceParamsForHeight(minDim);
-        // Sample the LINEARLY upscaled texture in OUTPUT space — this is the
-        // correct place to do an unsharp mask (blur = average of interpolated neighbours)
-        gl.uniform2f(glLocations.uTexel, 1 / Math.max(2, qualityCanvas.width), 1 / Math.max(2, qualityCanvas.height));
-        gl.uniform1f(glLocations.uSharp, p.sharp);
-        gl.uniform1f(glLocations.uContrast, p.contrast);
-        gl.uniform1f(glLocations.uSat, p.sat);
-        gl.uniform1f(glLocations.uWarm, p.warm);
+        const p = (degradeState.active && degradeState.params) || { block: 8, quant: 32, mosquito: 0, noise: 0, chroma: 0, flatten: 0, deblock: 0 };
         gl.uniform1f(glLocations.uDegrade, degradeState.active ? 1 : 0);
-        gl.uniform1f(glLocations.uBlockPx, p.block || 8);
-        gl.uniform1f(glLocations.uQuant, p.quant || 32);
+        gl.uniform1f(glLocations.uBlockPx, p.block);
+        gl.uniform1f(glLocations.uQuant, p.quant);
         gl.uniform1f(glLocations.uMosquito, p.mosquito || 0);
         gl.uniform1f(glLocations.uNoise, p.noise || 0);
         gl.uniform1f(glLocations.uChroma, p.chroma || 0);
@@ -2654,7 +2660,6 @@ void main() {
         if (!qualityCtx) qualityCtx = qualityCanvas.getContext('2d', { alpha: false });
         if (!qualityCtx) return;
         const w = qualityCanvas.width, h = qualityCanvas.height;
-        const minDim = Math.min(w, h);
         if (degradeState.active && degradeState.params) {
             const p = degradeState.params;
             // Block DCT look without WebGL: coarse DC grid + level quantization
@@ -2704,16 +2709,99 @@ void main() {
         qualityCtx.imageSmoothingEnabled = true;
         qualityCtx.imageSmoothingQuality = 'high';
         qualityCtx.drawImage(video, 0, 0, w, h);
-        // No WebGL — lean on the browser's SVG convolution for a real sharpen
-        const p = enhanceParamsForHeight(minDim);
-        qualityCanvas.style.filter = p.sharp > 0
-            ? `url(#${p.sharp >= 0.75 ? 'svg-sharpen-strong' : 'svg-sharpen'}) contrast(${p.contrast}) saturate(${p.sat})`
-            : 'none';
+        qualityCanvas.style.filter = 'none';
     }
 
     let qualityCanvasHeight = 0;
 
+    // ---------- 4K interpolation (2160p rung, non-4K sources only) ----------
+    // Crossfade between consecutive decoded frames — a "motion smoothing" TV
+    // mode, not a recolor: the video itself is never edited. Engaged only on
+    // high-refresh displays (>=100 Hz measured via rAF); the fps label then
+    // reflects the real refresh rate. Native-4K sources always keep native fps.
+    const interpolationState = {
+        active: false,
+        prev: null, cur: null,
+        pctx: null, cctx: null,
+        lastFrameTime: -1,
+        rafId: 0
+    };
+
+    // Dedicated output canvas for interpolation — the shared #quality-canvas may
+    // already hold a WebGL context (context types are sticky), so interpolation
+    // always runs in 2D on its own element. Same class -> same CSS behaviour.
+    let interpCanvasEl = null;
+    let interpCtx = null;
+    function getInterpCanvas() {
+        if (!interpCanvasEl) {
+            interpCanvasEl = document.createElement('canvas');
+            interpCanvasEl.className = 'quality-canvas';
+            interpCanvasEl.setAttribute('aria-hidden', 'true');
+            qualityCanvas.parentNode.insertBefore(interpCanvasEl, qualityCanvas);
+        }
+        return interpCanvasEl;
+    }
+
+    function startInterpolationProxy() {
+        if (!video.videoWidth || !video.videoHeight) { stopQualityProxy(); return; }
+        stopQualityProxy();
+        const w = video.videoWidth, h = video.videoHeight;
+        if (!interpolationState.prev) {
+            interpolationState.prev = document.createElement('canvas');
+            interpolationState.cur = document.createElement('canvas');
+            interpolationState.pctx = interpolationState.prev.getContext('2d', { alpha: false });
+            interpolationState.cctx = interpolationState.cur.getContext('2d', { alpha: false });
+        }
+        interpolationState.prev.width = w; interpolationState.prev.height = h;
+        interpolationState.cur.width = w; interpolationState.cur.height = h;
+        const cv = getInterpCanvas();
+        // Canvas stays at SOURCE resolution — the CSS upscales it losslessly;
+        // we only crossfade, so no processing cost scales with output size.
+        cv.width = w; cv.height = h;
+        if (!interpCtx) interpCtx = cv.getContext('2d', { alpha: false });
+        qualityCanvasHeight = 2160;
+        qualityProxyOn = true;
+        interpolationState.active = true;
+        interpolationState.lastFrameTime = video.currentTime;
+        interpolationState.cctx.drawImage(video, 0, 0, w, h);
+        interpolationState.pctx.drawImage(interpolationState.cur, 0, 0);
+        cv.classList.add('active');
+        video.classList.add('video-proxied');
+        const frameInterval = 1 / Math.max(1, knownFps || 60);
+        const tick = () => {
+            if (!interpolationState.active) return;
+            const t = video.currentTime;
+            if (t < interpolationState.lastFrameTime - 0.001) {
+                // seek / replay — re-prime both buffers at the new position
+                interpolationState.cctx.drawImage(video, 0, 0, w, h);
+                interpolationState.pctx.drawImage(interpolationState.cur, 0, 0);
+                interpolationState.lastFrameTime = t;
+            } else if (t - interpolationState.lastFrameTime >= frameInterval) {
+                // advance one source frame: prev <- cur, cur <- video
+                interpolationState.pctx.drawImage(interpolationState.cur, 0, 0);
+                interpolationState.cctx.drawImage(video, 0, 0, w, h);
+                interpolationState.lastFrameTime = t;
+            }
+            const alpha = Math.max(0, Math.min(1, (t - interpolationState.lastFrameTime) / frameInterval));
+            interpCtx.globalAlpha = 1;
+            interpCtx.drawImage(interpolationState.prev, 0, 0);
+            interpCtx.globalAlpha = alpha;
+            interpCtx.drawImage(interpolationState.cur, 0, 0);
+            interpCtx.globalAlpha = 1;
+            interpolationState.rafId = requestAnimationFrame(tick);
+        };
+        interpolationState.rafId = requestAnimationFrame(tick);
+    }
+
+    function stopInterpolationProxy() {
+        interpolationState.active = false;
+        if (interpolationState.rafId) cancelAnimationFrame(interpolationState.rafId);
+        interpolationState.rafId = 0;
+        if (interpCanvasEl) interpCanvasEl.classList.remove('active');
+    }
+
     function drawQualityFrame() {
+        if (interpolationState.active) return; // interpolation has its own frame loop
         if (ensureEnhanceGL()) drawQualityFrameGL();
         else drawQualityFrame2d();
     }
@@ -2723,8 +2811,9 @@ void main() {
         stopQualityProxy();
         const minDim = Math.min(video.videoWidth, video.videoHeight);
         const scale = height / minDim;
-        degradeState.active = scale < 1;
-        degradeState.params = degradeState.active ? degradeParamsForHeight(height) : null;
+        if (scale >= 0.999) { stopQualityProxy(); return; } // 1:1 — the file plays as-is
+        degradeState.active = true;
+        degradeState.params = degradeParamsForHeight(height);
         qualityCanvas.width = Math.max(2, Math.round(video.videoWidth * scale));
         qualityCanvas.height = Math.max(2, Math.round(video.videoHeight * scale));
         qualityCanvasHeight = height;
@@ -2757,6 +2846,7 @@ void main() {
     video.addEventListener('ended', () => window.setTimeout(paintQualityFrameOnce, 150));
 
     function stopQualityProxy() {
+        stopInterpolationProxy();
         qualityProxyOn = false;
         degradeState.active = false;
         degradeState.params = null;
@@ -2769,10 +2859,22 @@ void main() {
         const target = availableQualities.find((q) => q.key === qualityKey);
         if (!target) return;
         currentQualityKey = qualityKey;
-        if (!target.original) {
-            startQualityProxy(target.height);
-        } else {
+        if (target.original) {
             stopQualityProxy();
+        } else {
+            const srcMin = Math.min(video.videoWidth || 0, video.videoHeight || 0);
+            if (srcMin && target.height > srcMin) {
+                // Upscale rung — pixels stay untouched (CSS/compositor scaling);
+                // 4K of a non-4K source interpolates to the display's refresh rate.
+                if (target.height === 2160 && srcMin < 2160 && measuredDisplayHz >= 100) {
+                    startInterpolationProxy();
+                } else {
+                    stopQualityProxy();
+                }
+            } else {
+                // Downscale rung — the low-bitrate proxy runs at reduced size
+                startQualityProxy(target.height);
+            }
         }
         updateQualityUI();
     }

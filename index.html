@@ -427,15 +427,6 @@
     <video id="thumb-video" class="hidden-video" muted playsinline preload="metadata" crossorigin="anonymous"></video>
     <video id="seek-thumb-video" class="hidden-video" muted playsinline preload="auto" crossorigin="anonymous" aria-hidden="true"></video>
 
-    <!-- GPU sharpening filters (used by the quality proxy when WebGL is unavailable) -->
-    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
-        <filter id="svg-sharpen" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">
-            <feConvolveMatrix order="3" preserveAlpha="true" kernelMatrix="0 -0.5 0 -0.5 3 0 -0.5 0 -0.5" bias="0" divisor="1" result="sharp"/>
-        </filter>
-        <filter id="svg-sharpen-strong" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">
-            <feConvolveMatrix order="3" preserveAlpha="true" kernelMatrix="0 -0.72 0 -0.72 3.88 -0.72 0 -0.72 0" bias="0" divisor="1" result="sharp"/>
-        </filter>
-    </svg>
 
     <!-- Toast -->
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
