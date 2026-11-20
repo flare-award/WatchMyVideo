@@ -158,8 +158,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let autoplayOn = storageGet('wmv_autoplay', '0') === '1';
     let seekPreviewEnabled = storageGet('wmv_seek_preview', '1') === '1';
     let studioLight = storageGet('wmv_studio_light', '0') === '1';
+    let loudnessNorm = storageGet('wmv_loudness_norm', '0') === '1'; // «Постоянный уровень громкости»
     let isMuted = false;
-    let volumeBeforeMute = 1;
+    let volumeBeforeMute = 0.5;
     let isBoosted = false;
     let playbackSpeed = 1;
     let isLooping = false;
@@ -173,10 +174,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentFileUrl = null; // object URL (session-scoped)
     let pendingSeekTime = null;
 
-    // Web Audio — created lazily ONLY when the user enables boost
+    // Web Audio — the element routes through a straight (or gently compressing)
+    // graph so loudness can be made consistent. Created lazily on the first play
+    // (gesture) to respect autoplay policy; normal volume still controls output.
     let audioCtx = null;
     let sourceNode = null;
+    let compNode = null;
+    let makeupGain = null;
     let gainNode = null;
+    let audioGraphFailed = false;
 
     // Quality management — the site renders low tiers itself via a canvas
     const QUALITY_LADDER = [144, 240, 360, 480, 720, 1080, 1440, 2160];  // standard tiers only
@@ -298,22 +304,49 @@ document.addEventListener('DOMContentLoaded', () => {
     //  Web Audio — volume boost (lazy graph so the normal path
     //  always uses the element's native volume control)
     // =========================================================
+    // Two loudness presets. The OFF preset is a mild, always-on compressor with
+    // a touch of make-up gain — videos simply sit louder, peaks stay intact.
+    // The ON preset is a firmer, stable-volume normalization for quiet/uneven files.
+    const LOUDNESS_CALM = { threshold: -16, knee: 20, ratio: 2.6, attack: 0.004, release: 0.22, makeup: 1.32 };
+    const LOUDNESS_STRONG = { threshold: -30, knee: 26, ratio: 12, attack: 0.003, release: 0.26, makeup: 1.5 };
+
+    function applyLoudness() {
+        if (!compNode || !makeupGain) return;
+        const p = loudnessNorm ? LOUDNESS_STRONG : LOUDNESS_CALM;
+        compNode.threshold.value = p.threshold;
+        compNode.knee.value = p.knee;
+        compNode.ratio.value = p.ratio;
+        compNode.attack.value = p.attack;
+        compNode.release.value = p.release;
+        makeupGain.gain.value = p.makeup;
+    }
+
     function ensureBoostGraph() {
         if (audioCtx) return true;
+        if (audioGraphFailed) return false;
         try {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
-            if (!AudioContext) return false;
+            if (!AudioContext) { audioGraphFailed = true; return false; }
             audioCtx = new AudioContext();
             sourceNode = audioCtx.createMediaElementSource(video);
+            compNode = audioCtx.createDynamicsCompressor();
+            makeupGain = audioCtx.createGain();
             gainNode = audioCtx.createGain();
             gainNode.gain.value = isBoosted ? 2.0 : 1.0;
-            sourceNode.connect(gainNode);
+            sourceNode.connect(compNode);
+            compNode.connect(makeupGain);
+            makeupGain.connect(gainNode);
             gainNode.connect(audioCtx.destination);
+            applyLoudness();
             return true;
         } catch (e) {
-            console.warn('Web Audio boost init failed:', e);
+            console.warn('Web Audio graph init failed:', e);
             audioCtx = null;
+            sourceNode = null;
+            compNode = null;
+            makeupGain = null;
             gainNode = null;
+            audioGraphFailed = true;
             return false;
         }
     }
@@ -1318,6 +1351,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (audioCoverTop) audioCoverTop.addEventListener('click', togglePlayPause);
 
     video.addEventListener('play', () => {
+        if (ensureBoostGraph()) resumeAudioContext();
         startFpsSampler();
         scheduleIdle();
         playerWrapper.classList.remove('video-ended');
@@ -1575,9 +1609,7 @@ document.addEventListener('DOMContentLoaded', () => {
         speedSlider.setAttribute('aria-valuenow', String(playbackSpeed));
         speedSlider.setAttribute('aria-valuetext', speedBigValue(playbackSpeed));
         speedSliderValue.textContent = playbackSpeed.toFixed(2) + 'x';
-        speedPresets.querySelectorAll('.speed-pill').forEach((pill) => {
-            pill.classList.toggle('active', Math.abs(parseFloat(pill.getAttribute('data-speed')) - playbackSpeed) < 1e-9);
-        });
+        // Pills are plain click-to-set buttons — never highlighted while active.
         paintSpeedSlider();
     }
 
@@ -2029,6 +2061,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
+
+
+    const loudnessCheckbox = $('loudness-checkbox');
+    if (loudnessCheckbox) {
+        loudnessCheckbox.checked = loudnessNorm;
+        loudnessCheckbox.addEventListener('change', (e) => {
+            loudnessNorm = !!e.target.checked;
+            storageSet('wmv_loudness_norm', loudnessNorm ? '1' : '0');
+            if (ensureBoostGraph()) resumeAudioContext();
+            applyLoudness();
+        });
+    }
 
     // =========================================================
     //  TikTok share-style settings sheet
@@ -3014,6 +3058,23 @@ void main() {
             subtitlesOptionsList.appendChild(opt);
         });
 
+        // «Загрузить» — always the bottom-most item, below any loaded tracks
+        const upload = document.createElement('button');
+        upload.type = 'button';
+        upload.className = 'settings-option subtitle-upload';
+        upload.innerHTML = '<i class="fa-solid fa-upload" aria-hidden="true"></i><span>Загрузить…</span>';
+        upload.addEventListener('click', (ev) => {
+            ev.stopPropagation(); // keep the menu open and the switch scoped to subtitles
+            subFileInput.click();
+        });
+        subtitlesOptionsList.appendChild(upload);
+
+        const hasTracks = subtitleTracks.length > 0;
+        btnSubtitles.classList.toggle('subtitles-unavailable', !hasTracks);
+        btnSubtitles.setAttribute('data-tooltip', !hasTracks
+            ? 'Субтитры не загружены'
+            : (currentSubtitleTrackId === 'off' ? 'Включить субтитры (c)' : 'Выключить субтитры (c)'));
+
         if (currentSubtitleTrackId === 'off') {
             setChevronValue(currentSubLabel, 'Выкл.');
             ccIndicator.classList.remove('active');
@@ -3037,6 +3098,7 @@ void main() {
     subtitlesOptionsList.addEventListener('click', (e) => {
         const option = e.target.closest('.settings-option');
         if (!option) return;
+        if (option.classList.contains('subtitle-upload')) return; // handled by the upload button itself
         const subId = option.getAttribute('data-sub');
         selectSubtitleTrack(subId);
         switchSettingsView(settingsMain);
@@ -3044,7 +3106,7 @@ void main() {
 
     btnSubtitles.addEventListener('click', () => {
         if (subtitleTracks.length === 0) {
-            subFileInput.click();
+            showToast('Субтитры не загружены — добавьте файл в настройках игрока');
             return;
         }
         if (currentSubtitleTrackId === 'off') {
@@ -3105,12 +3167,14 @@ void main() {
     }
 
     volumeSlider.addEventListener('input', (e) => {
+        if (ensureBoostGraph()) resumeAudioContext();
         const val = parseFloat(e.target.value) / 100;
         if (val > 0) isMuted = false;
         setVolume(val);
     });
 
     btnMute.addEventListener('click', () => {
+        if (ensureBoostGraph()) resumeAudioContext();
         if (isMuted || video.volume === 0) {
             isMuted = false;
             setVolume(volumeBeforeMute > 0 ? volumeBeforeMute : 0.5);
@@ -3402,7 +3466,8 @@ void main() {
     // =========================================================
     //  Init
     // =========================================================
-    paintVolumeSlider((video.volume || 1) * 100);
+    video.volume = 0.5;
+    paintVolumeSlider(50);
     paintAutoplay();
     applyStudioLight();
     paintSleepLabel();
@@ -3411,7 +3476,7 @@ void main() {
     setMode(storageGet(MODE_KEY, 'youtube'), { persist: false });
     updateQualityUI();
     updateSubtitlesMenu();
-    setVolume(1);
+    setVolume(0.5);
     setPlaybackSpeed(1);
     renderSuggestions();
     refreshSocialUI();

@@ -22,7 +22,7 @@
     --accent-hover: #cc0000;
     --accent-blue: #3ea6ff;
     --slider-bg: rgba(255, 255, 255, 0.3);
-    --overlay-gradient: linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 55%, transparent 100%);
+    --overlay-gradient: linear-gradient(to top, rgba(0,0,0,0.52) 0%, rgba(0,0,0,0.20) 55%, transparent 100%);
     --header-height: 56px;
     --content-max: 1720px;
 }
@@ -1109,6 +1109,63 @@ body.idle .player-wrapper {
 }
 
 /* Controls row */
+/* Every bottom-row button & the time readout cast the same faint halo —
+   enough to float above bright frames, never enough to shout */
+.controls-row .control-btn,
+.controls-row .autoplay-btn,
+.controls-row .loop-btn,
+.controls-row .boost-btn {
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+.controls-row .control-btn i,
+.controls-row .autoplay-btn i,
+.controls-row .loop-btn i,
+.controls-row .boost-btn i,
+.controls-row .autoplay-pill i {
+    text-shadow: 0 0 6px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.time-display,
+.time-display .time-separator {
+    text-shadow: 0 0 7px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+/* YouTube action row: icons and labels share one optical centre line */
+.yt-action i,
+.yt-action span {
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+}
+
+/* Player subtitles button when no track is loaded — visibly inert, never dead-clickable */
+.control-btn.subtitles-unavailable {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* Settings: «Загрузить» sits as the bottom-most subtitles item */
+.subtitle-upload {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: flex-start;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    margin-top: 2px;
+    padding-top: 10px;
+    color: #fff;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+}
+
+.subtitle-upload i {
+    width: 16px;
+    text-align: center;
+    color: #3ea6ff;
+}
+
 .controls-row {
     display: flex;
     align-items: center;
@@ -1182,7 +1239,7 @@ body.idle .player-wrapper {
     width: 78px;
     height: 4px;
     border-radius: 2px;
-    background: linear-gradient(to right, #ffffff 0 var(--fill, 100%), rgba(255, 255, 255, 0.28) var(--fill, 100%) 100%);
+    background: linear-gradient(to right, #ffffff 0 var(--fill, 50%), rgba(255, 255, 255, 0.28) var(--fill, 50%) 100%);
     cursor: pointer;
     outline: none;
 }
@@ -1828,10 +1885,10 @@ input:checked + .slider-toggle:before {
 }
 
 .speed-pill.active {
-    background: #ffffff;
-    border-color: transparent;
-    color: #0f0f0f;
-    font-weight: 700;
+    /* Intentionally plain — the pill is a click-to-set button, never a highlighted chip */
+    background: rgba(255, 255, 255, 0.1);
+    color: #e1e1e1;
+    font-weight: 500;
 }
 
 /* ============================================================
