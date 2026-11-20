@@ -339,6 +339,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return !!(el && el.classList.contains('open'));
     };
 
+    // TikTok mode never hides its chrome — the rail, sound bar and header
+    // stay visible at all times (unlike YouTube/Player where idle fades UI).
+    function isTikTokMode() {
+        return document.body.classList.contains('mode-tiktok');
+    }
+
     function isOverlayOpen() {
         return !settingsMenu.classList.contains('hidden') ||
                document.body.classList.contains('tk-drawer-open') ||
@@ -354,6 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function scheduleIdle() {
         clearTimeout(idleTimer);
+        if (isTikTokMode()) return; // TikTok UI never fades out
         if (isOverlayOpen() || isDraggingProgress) {
             return;
         }
@@ -387,6 +394,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // even when paused. The settings menu stays open. Moving straight onto
     // the floating header / menus cancels the hide (they're part of the UI).
     function scheduleChromeHide(delay = 160) {
+        if (isTikTokMode()) return; // TikTok UI never fades out
         clearTimeout(chromeHideTimer);
         chromeHideTimer = window.setTimeout(() => {
             if (!isOverlayOpen() && !isDraggingProgress) {
@@ -430,6 +438,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.addEventListener(evt, pokeUI, { passive: true });
     });
     document.addEventListener('mouseleave', () => {
+        if (isTikTokMode()) return; // TikTok UI never fades out
         if (!isOverlayOpen()) {
             document.body.classList.add('idle');
         }
@@ -443,6 +452,13 @@ document.addEventListener('DOMContentLoaded', () => {
         currentMode = mode;
         document.body.classList.remove('mode-player', 'mode-youtube', 'mode-tiktok');
         document.body.classList.add('mode-' + mode);
+        if (mode === 'tiktok') {
+            clearTimeout(idleTimer);
+            clearTimeout(chromeHideTimer);
+            document.body.classList.remove('idle');
+        } else if (typeof pokeUI === 'function') {
+            pokeUI();
+        }
         modePillButtons.forEach((btn) => {
             const active = btn.getAttribute('data-mode') === mode;
             btn.classList.toggle('active', active);
