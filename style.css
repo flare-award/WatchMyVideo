@@ -1133,7 +1133,7 @@ body.idle .player-wrapper {
     bottom: calc(100% + 23px);
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.78);
+    background: rgba(0, 0, 0, 0.5);
     color: #fff;
     font-size: 0.72rem;
     font-weight: 400;
@@ -2304,6 +2304,11 @@ input:checked + .slider-toggle:before {
 
 .yt-desc-stat {
     font-weight: 600;
+}
+
+.yt-desc-gap {
+    display: inline-block;
+    width: 0.38em;
 }
 
 .yt-desc-size {

@@ -183,7 +183,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let autoplayOn = storageGet('wmv_autoplay', '0') === '1';
     let seekPreviewEnabled = storageGet('wmv_seek_preview', '1') === '1';
     let studioLight = storageGet('wmv_studio_light', '0') === '1';
-    let loudnessNorm = storageGet('wmv_loudness_norm', '0') === '1'; // «Постоянный уровень громкости»
+    let reduceVolume = storageGet('wmv_reduce_volume', '0') === '1'; // «Снизить громкость» — output ×0.5
+    let uiVolume = 0.5; // slider position 0..1 (what the user sees), independent of the effective level
     let isMuted = false;
     let volumeBeforeMute = 0.5;
     let isBoosted = false;
@@ -386,22 +387,23 @@ document.addEventListener('DOMContentLoaded', () => {
     //  Web Audio — volume boost (lazy graph so the normal path
     //  always uses the element's native volume control)
     // =========================================================
-    // Two loudness presets. OFF is deliberately transparent (unity gain, no
-    // compression) — the video plays at its native loudness and the volume
-    // slider is meaningful again. ON is a firmer, stable-volume normalization
-    // for quiet/uneven files (opt-in via «Постоянный уровень громкости»).
-    const LOUDNESS_CALM = { threshold: 0, knee: 0, ratio: 1, attack: 0.003, release: 0.25, makeup: 1.0 };
-    const LOUDNESS_STRONG = { threshold: -30, knee: 26, ratio: 12, attack: 0.003, release: 0.26, makeup: 1.5 };
-
-    function applyLoudness() {
-        if (!compNode || !makeupGain) return;
-        const p = loudnessNorm ? LOUDNESS_STRONG : LOUDNESS_CALM;
-        compNode.threshold.value = p.threshold;
-        compNode.knee.value = p.knee;
-        compNode.ratio.value = p.ratio;
-        compNode.attack.value = p.attack;
-        compNode.release.value = p.release;
-        makeupGain.gain.value = p.makeup;
+    // The chain is transparent (compressor bypassed, unity gain) except for
+    // the opt-in «Снизить громкость»: makeup gain halves the overall output.
+    // With the Web Audio graph live the cut lives in makeupGain; without it
+    // the element volume itself carries slider × 0.5 — either way the slider
+    // keeps its full travel, so each step becomes twice as fine.
+    function applyReduceVolume() {
+        if (compNode) {
+            compNode.threshold.value = 0;
+            compNode.knee.value = 0;
+            compNode.ratio.value = 1;
+            compNode.attack.value = 0.003;
+            compNode.release.value = 0.25;
+        }
+        if (makeupGain) makeupGain.gain.value = reduceVolume ? 0.5 : 1.0;
+        if (!isMuted) {
+            video.volume = audioCtx ? uiVolume : uiVolume * (reduceVolume ? 0.5 : 1);
+        }
     }
 
     function ensureBoostGraph() {
@@ -420,7 +422,7 @@ document.addEventListener('DOMContentLoaded', () => {
             compNode.connect(makeupGain);
             makeupGain.connect(gainNode);
             gainNode.connect(audioCtx.destination);
-            applyLoudness();
+            applyReduceVolume();
             return true;
         } catch (e) {
             console.warn('Web Audio graph init failed:', e);
@@ -1137,7 +1139,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (_) { /* unreadable mtime — skip the date */ }
         }
         if (currentFileSize) parts.push(`<span class="yt-desc-size">${formatBytes(currentFileSize)}</span>`);
-        return parts.join('\u00A0\u00A0\u00A0\u00A0  ');
+        return parts.join('<span class="yt-desc-gap"> </span>');
     }
 
     // Flag for files that report an infinite duration until they are seeked once
@@ -2585,14 +2587,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 
-    const loudnessCheckbox = $('loudness-checkbox');
-    if (loudnessCheckbox) {
-        loudnessCheckbox.checked = loudnessNorm;
-        loudnessCheckbox.addEventListener('change', (e) => {
-            loudnessNorm = !!e.target.checked;
-            storageSet('wmv_loudness_norm', loudnessNorm ? '1' : '0');
-            if (ensureBoostGraph()) resumeAudioContext();
-            applyLoudness();
+    const reduceVolumeCheckbox = $('reduce-volume-checkbox');
+    if (reduceVolumeCheckbox) {
+        reduceVolumeCheckbox.checked = reduceVolume;
+        reduceVolumeCheckbox.addEventListener('change', (e) => {
+            reduceVolume = !!e.target.checked;
+            storageSet('wmv_reduce_volume', reduceVolume ? '1' : '0');
+            if (audioCtx) resumeAudioContext();
+            applyReduceVolume();
         });
     }
 
@@ -3629,8 +3631,8 @@ void main() {
         const curH = cur ? cur.height : (vh || 0);
         const optH = opt ? opt.height : (vh || 0);
         stRes.textContent = `${qualityLabel(curH)}  /  ${qualityLabel(optH)}`;
-        const vol = Math.round(video.volume * 100);
-        stVolume.textContent = `${vol}%  /  ${loudnessNorm ? '100% (норм.)' : 'без норм.'}`;
+        const vol = Math.round(uiVolume * 100);
+        stVolume.textContent = `${vol}%  /  ${reduceVolume ? '×0.5 (сниж.)' : 'без сниж.'}`;
     }
 
     function updateStatsUI() {
@@ -3954,7 +3956,8 @@ void main() {
 
     function setVolume(vol) {
         const clamped = Math.max(0, Math.min(1, vol));
-        video.volume = clamped;
+        uiVolume = clamped;
+        video.volume = audioCtx ? clamped : clamped * (reduceVolume ? 0.5 : 1);
         paintVolumeSlider(clamped * 100);
         isMuted = clamped === 0;
         if (clamped > 0 && audioCtx) resumeAudioContext();
@@ -3970,11 +3973,11 @@ void main() {
 
     btnMute.addEventListener('click', () => {
         if (ensureBoostGraph()) resumeAudioContext();
-        if (isMuted || video.volume === 0) {
+        if (isMuted || uiVolume === 0) {
             isMuted = false;
             setVolume(volumeBeforeMute > 0 ? volumeBeforeMute : 0.5);
         } else {
-            volumeBeforeMute = video.volume;
+            volumeBeforeMute = uiVolume;
             isMuted = true;
             video.volume = 0;
             paintVolumeSlider(0);
@@ -4279,13 +4282,13 @@ void main() {
                 return;
             case 'ArrowUp':
                 e.preventDefault();
-                setVolume(video.volume + 0.05);
-                if (isMuted && video.volume > 0) isMuted = false;
-                updateVolumeIcon(video.volume);
+                setVolume(uiVolume + 0.05);
+                if (isMuted && uiVolume > 0) isMuted = false;
+                updateVolumeIcon(uiVolume);
                 return;
             case 'ArrowDown':
                 e.preventDefault();
-                setVolume(video.volume - 0.05);
+                setVolume(uiVolume - 0.05);
                 return;
             case 'Home':
                 if (hasDuration()) { e.preventDefault(); video.currentTime = 0; }
