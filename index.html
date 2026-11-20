@@ -29,6 +29,9 @@
         <!-- ══════════ Single header — the same chrome in every mode ══════════ -->
         <header class="app-header" id="app-header">
             <div class="header-left">
+                <button id="hamburger-visual" class="hamburger-btn" type="button" tabindex="-1" aria-hidden="true">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
                 <div class="logo" aria-label="WatchMyVideo">
                     <svg class="logo-mark" viewBox="0 0 46 32" width="34" height="24" aria-hidden="true"><rect width="46" height="32" rx="8" fill="#ff0000"/><path d="M17.5 9.2v13.6l12-6.8z" fill="#ffffff"/></svg>
                     <span class="logo-text">WatchMyVideo</span>
@@ -145,7 +148,7 @@
                             <div id="subtitle-overlay" class="subtitle-overlay"></div>
                                     <div class="tk-rail" id="tk-rail">
                                         <div class="tk-avatar-wrap">
-                                            <div class="tk-avatar" id="tk-avatar">В</div>
+                                            <div class="tk-avatar" id="tk-avatar">Я</div>
                                             <button class="tk-follow" id="tk-follow" type="button" title="Подписаться на автора" aria-pressed="false">
                                                 <svg class="icon-pm" id="tk-follow-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
                                                 <svg class="icon-pm hidden" id="tk-follow-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.6l4.6 4.6L19 7.6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -171,8 +174,7 @@
                                     </div>
 
                                     <div class="tk-info">
-                                        <span class="tk-author" id="tk-author">Вы</span>
-                                        <span class="tk-info-sep" aria-hidden="true">·</span>
+                                        <span class="tk-author" id="tk-author">Я</span>
                                         <span class="tk-desc" id="tk-desc">Описание видео</span>
                                     </div>
 
@@ -221,7 +223,7 @@
                                             <i class="fa-solid fa-camera"></i>
                                         </button>
                                         <button id="btn-autoplay" class="autoplay-btn" type="button" data-tooltip="Автовоспроизведение" aria-pressed="false" aria-label="Автовоспроизведение видео после загрузки">
-                                            <span class="autoplay-pill" aria-hidden="true"><span class="autoplay-thumb"><i class="fa-solid fa-pause autoplay-icon-off"></i><i class="fa-solid fa-play autoplay-icon-on"></i></span></span>
+                                            <span class="autoplay-pill" aria-hidden="true"><span class="autoplay-thumb"><svg class="autoplay-icon-off" viewBox="0 0 24 24" focusable="false"><rect x="7.7" y="6.2" width="2.9" height="11.6" rx="1.1" fill="currentColor"/><rect x="13.4" y="6.2" width="2.9" height="11.6" rx="1.1" fill="currentColor"/></svg><i class="fa-solid fa-play autoplay-icon-on"></i></span></span>
                                         </button>
                                         <button id="btn-subtitles" class="control-btn" type="button" data-tooltip="Субтитры (c)" aria-label="Субтитры">
                                             <i class="fa-solid fa-closed-captioning"></i>
@@ -455,8 +457,8 @@
                     </div><!-- /player-column -->
 
                     <!-- ══════════ YouTube sidebar (YouTube mode only) ══════════ -->
-                    <aside id="yt-sidebar" class="yt-sidebar yt-only" aria-label="Рекомендации">
-                        <h2 class="yt-sidebar-title">Похожие видео</h2>
+                    <aside id="yt-sidebar" class="yt-sidebar yt-only" aria-label="Недавно опубликованные">
+                        <h2 class="yt-sidebar-title">Недавно опубликованные</h2>
                         <div id="suggest-list" class="suggest-list"></div>
                     </aside>
                 </div><!-- /yt-grid -->
@@ -470,17 +472,6 @@
     <video id="thumb-video" class="hidden-video" muted playsinline preload="metadata" crossorigin="anonymous"></video>
     <video id="seek-thumb-video" class="hidden-video" muted playsinline preload="auto" crossorigin="anonymous" aria-hidden="true"></video>
 
-
-    <!-- One-time account-name card (shown once, ever) -->
-    <div id="account-name-card" class="account-name-card hidden" role="dialog" aria-label="Как к вам обращаться">
-        <div class="account-name-title">Как к вам обращаться?</div>
-        <div class="account-name-sub">Так подпишем ваш аккаунт (TikTok, комментарии). Браузер не может прочитать имя из Windows сам — запишите его так, как оно звучит у вас. Оно останется только на этом устройстве.</div>
-        <div class="account-name-row">
-            <input id="account-name-input" type="text" maxlength="40" autocomplete="off" placeholder="Например, Александр">
-            <button id="account-name-save" class="account-name-save" type="button">Сохранить</button>
-        </div>
-        <button id="account-name-skip" class="account-name-skip" type="button">Пропустить</button>
-    </div>
 
     <!-- Toast -->
     <div id="toast" class="toast" role="status" aria-live="polite"></div>

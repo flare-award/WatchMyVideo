@@ -33,6 +33,7 @@ html, body {
 
 /* Custom scrollbar — thin, dark, low-contrast; matches the site. */
 html {
+    scrollbar-gutter: stable;                /* reserve the gutter permanently — no layout jump */
     scrollbar-width: thin;                 /* Firefox */
     scrollbar-color: rgba(255, 255, 255, 0.9) transparent;  /* white by default (Firefox has no hover state) */
 }
@@ -109,10 +110,9 @@ button {
     position: sticky;
     top: 0;
     z-index: 80;
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
-    justify-content: space-between;
-    gap: 16px;
     height: var(--header-height);
     padding: 0 16px;
     background-color: rgba(15, 15, 15, 0.96);
@@ -169,34 +169,54 @@ body.mode-tiktok .header-left {
 .header-left, .header-center, .header-right {
     display: flex;
     align-items: center;
-}
-
-.header-right {
-    margin-left: auto;
+    min-width: 0;
 }
 
 .header-left {
-    flex: 0 0 auto;
-    min-width: 170px;
+    justify-self: start;
+    gap: 4px;
 }
 
 .header-center {
-    flex: 1 1 auto;
+    justify-self: center;
     justify-content: center;
-    max-width: 720px;
 }
 
 .header-right {
-    flex: 0 0 auto;
-    gap: 12px;
-    min-width: 170px;
+    justify-self: end;
     justify-content: flex-end;
+    gap: 12px;
+}
+
+/* Visual-only hamburger — deliberately inert: no tooltip, no click action */
+.hamburger-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: none;
+    background: transparent;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 1.1rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    pointer-events: auto;
+}
+
+.hamburger-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.hamburger-btn:focus {
+    outline: none;
 }
 
 .logo {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 4px;
     line-height: 1;
     user-select: none;
 }
@@ -206,7 +226,7 @@ body.mode-tiktok .header-left {
     position: relative;
     display: flex;
     align-items: center;
-    width: min(640px, 100%);
+    width: clamp(260px, 36vw, 600px);
 }
 
 #search-input {
@@ -966,7 +986,7 @@ body.idle .player-wrapper {
     position: relative;
     height: 4px;
     width: 100%;
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.072);
     cursor: pointer;
     margin-bottom: 9px;
     border-radius: 2px;
@@ -1122,20 +1142,21 @@ body.idle .player-wrapper {
 .controls-row .autoplay-btn,
 .controls-row .loop-btn,
 .controls-row .boost-btn {
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+    filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.32));
 }
 
 .controls-row .control-btn i,
 .controls-row .autoplay-btn i,
 .controls-row .loop-btn i,
 .controls-row .boost-btn i,
-.controls-row .autoplay-pill i {
-    text-shadow: 0 0 6px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.45);
+.controls-row .autoplay-pill i,
+.controls-row .autoplay-pill svg {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.38);
 }
 
 .time-display,
 .time-display .time-separator {
-    text-shadow: 0 0 7px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.55);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.42);
 }
 
 /* YouTube action row: icons and labels share one optical centre line */
@@ -1384,6 +1405,13 @@ body.idle .player-wrapper {
 .autoplay-thumb i {
     font-size: 0.58rem;
     line-height: 1;
+    color: #fff;
+    position: absolute;
+}
+
+.autoplay-thumb svg.autoplay-icon-off {
+    width: 0.62rem;
+    height: 0.62rem;
     color: #fff;
     position: absolute;
 }
@@ -2169,6 +2197,55 @@ input:checked + .slider-toggle:before {
     white-space: pre-line;
 }
 
+.yt-comment-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-top: 6px;
+}
+
+.yt-comment-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: none;
+    color: #e8e8e8;
+    cursor: pointer;
+    font-size: 0.78rem;
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 16px;
+    transition: background 0.15s, color 0.15s;
+}
+
+.yt-comment-action:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.yt-comment-action.active {
+    color: #3ea6ff;
+}
+
+.yt-comment-like-count {
+    font-variant-numeric: tabular-nums;
+}
+
+.yt-comment-creator i {
+    color: #3ea6ff;
+    font-size: 0.78rem;
+}
+
+.yt-comment-creator.active i {
+    color: #3ea6ff;
+}
+
+.yt-comment-reply-btn {
+    font-weight: 500;
+    padding: 0 12px;
+}
+
 .yt-comment-delete {
     background: transparent;
     border: none;
@@ -2219,8 +2296,8 @@ input:checked + .slider-toggle:before {
 
 .suggest-item {
     display: flex;
-    flex-direction: column;
-    gap: 10px;
+    flex-direction: row;
+    gap: 12px;
     background: transparent;
     border: none;
     text-align: left;
@@ -2242,7 +2319,7 @@ input:checked + .slider-toggle:before {
 
 .suggest-thumb {
     position: relative;
-    width: 100%;
+    width: 200px;
     height: auto;
     aspect-ratio: 16 / 9;
     border-radius: 12px;
@@ -2281,7 +2358,7 @@ input:checked + .slider-toggle:before {
 
 .suggest-meta {
     min-width: 0;
-    padding: 0 4px 4px;
+    padding: 2px 2px 2px 0;
 }
 
 .suggest-title {
@@ -2390,7 +2467,7 @@ input:checked + .slider-toggle:before {
     cursor: pointer;
     padding: 0;
     line-height: 1;
-    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.9));
+    /* no drop-shadow here — shadows stay a YouTube/Player-style accent */
 }
 
 .tk-action:hover {
@@ -2421,12 +2498,13 @@ input:checked + .slider-toggle:before {
     left: 12px;
     right: 76px;
     bottom: 12px;
-    height: 52px;
     color: #fff;
     z-index: 26;
     display: none;
-    align-items: center;
-    gap: 8px;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: 3px;
     min-width: 0;
     pointer-events: auto;
     transition: opacity 0.25s ease;
@@ -2440,18 +2518,15 @@ input:checked + .slider-toggle:before {
     flex-shrink: 0;
 }
 
-.tk-info-sep {
-    color: rgba(255, 255, 255, 0.75);
-    flex-shrink: 0;
-}
-
 .tk-desc {
     font-size: 0.84rem;
-    line-height: 1.35;
+    line-height: 1.4;
     text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
-    white-space: nowrap;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
     min-width: 0;
 }
 
@@ -2512,12 +2587,15 @@ input:checked + .slider-toggle:before {
 }
 
 .tk-sheet-handle {
+    position: relative;
     width: 40px;
     height: 4px;
     border-radius: 2px;
     background: rgba(255, 255, 255, 0.32);
-    margin: 0 auto 6px;
+    margin: 2px auto 6px;
     flex-shrink: 0;
+    cursor: grab;
+    touch-action: none;
 }
 
 .tk-sheet-row {
@@ -2671,28 +2749,46 @@ body.tk-drawer-open .tk-backdrop {
 }
 
 .tk-drawer-handle {
+    position: relative;
     width: 38px;
     height: 4px;
     border-radius: 2px;
     background: rgba(255, 255, 255, 0.28);
-    margin: 10px auto 2px;
+    margin: 12px auto 4px;
     flex-shrink: 0;
+    cursor: grab;
+    touch-action: none;
+}
+
+.tk-drawer-handle::after,
+.tk-sheet-handle::after {
+    content: "";
+    position: absolute;
+    left: -36px;
+    right: -36px;
+    top: -10px;
+    bottom: -10px;
 }
 
 .tk-drawer-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 2px 8px 10px;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 2px 12px 10px;
     border-bottom: none;
     flex-shrink: 0;
+}
+
+.tk-drawer-close {
+    margin-left: auto;
 }
 
 .tk-drawer-title {
     font-size: 0.82rem;
     font-weight: 600;
     color: rgba(255, 255, 255, 0.9);
-    margin: 0 auto;
+    margin: 0; /* left-aligned title — the close ✕ is absolutely positioned */
 }
 
 .tk-drawer-title b {
@@ -2887,7 +2983,7 @@ body.mode-tiktok .progress-container {
     margin: 0 auto;
     width: calc(100% - 16px);
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.24);
+    background: rgba(255, 255, 255, 0.13); /* the unfilled part sits well below the white fill */
 }
 
 body.mode-tiktok .progress-played {
@@ -3050,6 +3146,16 @@ body.idle .tk-disc,
 
     .header-left, .header-right {
         min-width: 0;
+    }
+}
+
+@media (max-width: 1350px) {
+    .mode-pill-btn span {
+        display: none;
+    }
+
+    .mode-pill-btn {
+        padding: 0 12px;
     }
 }
 
@@ -3473,90 +3579,6 @@ body.mode-tiktok .tk-backdrop {
 
 .tk-paused-badge.visible {
     display: flex;
-}
-
-/* ============================================================
-   One-time account-name card
-   ============================================================ */
-.account-name-card {
-    position: fixed;
-    left: 50%;
-    bottom: 36px;
-    transform: translateX(-50%);
-    z-index: 95;
-    width: min(420px, calc(100vw - 32px));
-    background: rgba(28, 28, 28, 0.98);
-    border-radius: 16px;
-    box-shadow: 0 14px 48px rgba(0, 0, 0, 0.6);
-    padding: 18px 18px 14px;
-    color: #fff;
-}
-
-.account-name-title {
-    font-size: 1.02rem;
-    font-weight: 700;
-}
-
-.account-name-sub {
-    font-size: 0.8rem;
-    line-height: 1.45;
-    color: #b9b9b9;
-    margin-top: 6px;
-}
-
-.account-name-row {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-}
-
-.account-name-row input {
-    flex: 1 1 auto;
-    min-width: 0;
-    height: 40px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    background: rgba(255, 255, 255, 0.06);
-    color: #fff;
-    border-radius: 10px;
-    padding: 0 12px;
-    font-size: 0.95rem;
-    outline: none;
-}
-
-.account-name-row input:focus {
-    border-color: #3ea6ff;
-}
-
-.account-name-save {
-    height: 40px;
-    border: none;
-    border-radius: 10px;
-    background: #f1f1f1;
-    color: #0f0f0f;
-    font-weight: 700;
-    font-size: 0.88rem;
-    padding: 0 16px;
-    cursor: pointer;
-}
-
-.account-name-save:hover {
-    background: #d9d9d9;
-}
-
-.account-name-skip {
-    margin-top: 10px;
-    background: transparent;
-    border: none;
-    color: #8f8f8f;
-    font-size: 0.82rem;
-    padding: 2px 4px;
-    cursor: pointer;
-    border-radius: 6px;
-}
-
-.account-name-skip:hover {
-    color: #e0e0e0;
-    background: rgba(255, 255, 255, 0.06);
 }
 
 .icon-pm {
