@@ -143,7 +143,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // TikTok chrome
     const tkAvatar = $('tk-avatar');
     const tkFollow = $('tk-follow');
-    const tkFollowIcon = $('tk-follow-icon');
+    const tkFollowPlus = $('tk-follow-plus');
+    const tkFollowCheck = $('tk-follow-check');
     const tkLike = $('tk-like');
     const tkLikeCount = $('tk-like-count');
     const tkCommentCount = $('tk-comment-count');
@@ -628,15 +629,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const url = URL.createObjectURL(file);
         const key = `file:${file.name}:${file.size}`;
-        registerRecentVideo({ key, title: stripExtension(file.name), url, isDemo: false, size: file.size, created: file.lastModified || null });
         if (audio) {
             // Try to pull embedded cover art (ID3 APIC); fall back to a generated cover.
             extractEmbeddedCover(file).then((blob) => {
-                startPlaybackSession(url, key, file.name, file.size, { audio: true, coverUrl: blob ? URL.createObjectURL(blob) : null, created: file.lastModified || null });
+                const coverUrl = blob ? URL.createObjectURL(blob) : generateAudioCover(stripExtension(file.name) || 'Аудио');
+                registerRecentVideo({ key, title: stripExtension(file.name), url, isDemo: false, size: file.size, created: file.lastModified || null, thumb: coverUrl, isAudio: true });
+                startPlaybackSession(url, key, file.name, file.size, { audio: true, coverUrl, created: file.lastModified || null });
             }).catch(() => {
-                startPlaybackSession(url, key, file.name, file.size, { audio: true, coverUrl: null, created: file.lastModified || null });
+                const coverUrl = generateAudioCover(stripExtension(file.name) || 'Аудио');
+                registerRecentVideo({ key, title: stripExtension(file.name), url, isDemo: false, size: file.size, created: file.lastModified || null, thumb: coverUrl, isAudio: true });
+                startPlaybackSession(url, key, file.name, file.size, { audio: true, coverUrl, created: file.lastModified || null });
             });
         } else {
+            registerRecentVideo({ key, title: stripExtension(file.name), url, isDemo: false, size: file.size, created: file.lastModified || null });
             startPlaybackSession(url, key, file.name, file.size, { audio: false, created: file.lastModified || null });
         }
     }
@@ -740,9 +745,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         recentVideos.unshift(entry);
         entry.hue = hueFromString(entry.title);
-        entry.thumb = null;
         entry.durationLabel = '';
-        captureThumbnail(entry).catch(() => { /* keep gradient placeholder */ });
+        if (!entry.thumb) {
+            entry.thumb = null;
+            if (!entry.isAudio) captureThumbnail(entry).catch(() => { /* keep gradient placeholder */ });
+        }
         renderSuggestions();
         updateChannelCount();
     }
@@ -789,7 +796,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 thumb.appendChild(img);
             } else {
                 const icon = document.createElement('i');
-                icon.className = 'fa-solid fa-film suggest-thumb-icon';
+                icon.className = 'fa-solid ' + (v.isAudio ? 'fa-music' : 'fa-film') + ' suggest-thumb-icon';
                 thumb.appendChild(icon);
             }
             if (v.durationLabel) {
@@ -1010,6 +1017,13 @@ document.addEventListener('DOMContentLoaded', () => {
             playerWrapper.style.setProperty('--video-ar-num', String(ar));
         }
         durationEl.textContent = formatTime(video.duration);
+        if (currentIsAudio && currentVideoKey) {
+            const audioEntry = recentVideos.find((v) => v.key === currentVideoKey);
+            if (audioEntry && !audioEntry.durationLabel) {
+                audioEntry.durationLabel = formatTime(video.duration);
+                renderSuggestions();
+            }
+        }
         if (statsVisible) updateStatsUI();
         if (!qualitiesComputed) {
             qualitiesComputed = true;
@@ -1103,7 +1117,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (tkShareCount) tkShareCount.textContent = formatCount(shareCount);
         tkFollow.classList.toggle('subscribed', subscribed);
         tkFollow.setAttribute('aria-pressed', subscribed ? 'true' : 'false');
-        tkFollowIcon.className = subscribed ? 'fa-solid fa-check' : 'fa-solid fa-plus';
+        if (tkFollowPlus) tkFollowPlus.classList.toggle('hidden', subscribed);
+        if (tkFollowCheck) tkFollowCheck.classList.toggle('hidden', !subscribed);
     }
 
     function toggleLike() {
