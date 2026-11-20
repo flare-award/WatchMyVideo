@@ -187,7 +187,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Quality management — the site renders low tiers itself via a canvas
     const QUALITY_LADDER = [144, 240, 360, 480, 720, 1080, 1440, 2160];  // standard tiers only
     const QUALITY_ARTIFICIAL_DOWN = [144, 240, 360, 480, 720, 1080, 1440]; // below-source rungs we synthesize
-    const QUALITY_ARTIFICIAL_UP = [1440, 2160];                            // upscale tiers offered when missing
+    const QUALITY_ARTIFICIAL_UP = [1080, 1440, 2160];                     // upscale tiers offered when missing (1080 appears even for 720p sources)
     let availableQualities = [{ key: 'original', label: '0', height: 0, original: true }];
     let currentQualityKey = 'original';
     let qualityProxyOn = false;
@@ -1355,6 +1355,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     video.addEventListener('play', () => {
         if (ensureBoostGraph()) resumeAudioContext();
+        if (interpolationState.active && !interpolationState.rafId) {
+            interpolationState.rafId = requestAnimationFrame(function resumeTick() {
+                if (!interpolationState.active) { interpolationState.rafId = 0; return; }
+                if (video.paused || video.ended) { interpolationState.rafId = 0; return; }
+                if (typeof interpolationState.drawInterpFrame === 'function') {
+                    interpolationState.drawInterpFrame();
+                }
+                interpolationState.rafId = requestAnimationFrame(resumeTick);
+            });
+        }
         startFpsSampler();
         scheduleIdle();
         playerWrapper.classList.remove('video-ended');
@@ -1365,6 +1375,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     video.addEventListener('pause', () => {
         updatePlayPauseButton(false);
+        if (interpolationState.active) {
+            if (interpolationState.rafId) {
+                cancelAnimationFrame(interpolationState.rafId);
+                interpolationState.rafId = 0;
+            }
+            // Draw the final composite once so the paused frame is exact
+            if (typeof interpolationState.drawInterpFrame === 'function') interpolationState.drawInterpFrame();
+        }
         if (!video.ended) flashCenterIcon('fa-solid fa-pause');
     });
 
@@ -2337,7 +2355,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // fps is always shown; if the real rate is not measurable, 60 is assumed.
         // The 4K rung of a non-4K source interpolates to the display's refresh
         // rate — advertise the rate the user will actually get (measured).
-        if (h === 2160 && sourceMinDim > 0 && sourceMinDim < 2160 && measuredDisplayHz >= 100) {
+        if (h === 2160 && sourceMinDim > 0 && sourceMinDim < 2160 && measuredDisplayHz >= 59) {
             return `2160p${Math.round(measuredDisplayHz)}`;
         }
         return `${h}p${knownFps || 60}`;
@@ -2674,10 +2692,10 @@ void main() {
     // bleeding, banding from coarse levels, breathing mosquito noise — not a
     // clean resample and not uniform fog.
     function degradeParamsForHeight(targetH) {
-        if (targetH <= 150) return { block: 16, flatten: 0.95, deblock: 0.50, chroma: 0.80, quant: 12, mosquito: 0.13, noise: 0.032, sat: 0.78, contrast: 0.93, sharp: 0, warm: 0 };
-        if (targetH <= 260) return { block: 12, flatten: 0.80, deblock: 0.38, chroma: 0.60, quant: 16, mosquito: 0.11, noise: 0.024, sat: 0.85, contrast: 0.955, sharp: 0, warm: 0 };
-        if (targetH <= 380) return { block: 8,  flatten: 0.55, deblock: 0.25, chroma: 0.42, quant: 24, mosquito: 0.07, noise: 0.015, sat: 0.90, contrast: 0.97, sharp: 0, warm: 0 };
-        return { block: 8, flatten: 0.40, deblock: 0.18, chroma: 0.32, quant: 28, mosquito: 0.04, noise: 0.010, sat: 0.92, contrast: 0.98, sharp: 0, warm: 0 };
+        if (targetH <= 150) return { block: 16, flatten: 0.95, deblock: 0.66, chroma: 0.80, quant: 12, mosquito: 0.13, noise: 0.032, sat: 0.78, contrast: 0.93, sharp: 0, warm: 0 };
+        if (targetH <= 260) return { block: 12, flatten: 0.80, deblock: 0.54, chroma: 0.60, quant: 16, mosquito: 0.11, noise: 0.024, sat: 0.85, contrast: 0.955, sharp: 0, warm: 0 };
+        if (targetH <= 380) return { block: 8,  flatten: 0.55, deblock: 0.40, chroma: 0.42, quant: 24, mosquito: 0.07, noise: 0.015, sat: 0.90, contrast: 0.97, sharp: 0, warm: 0 };
+        return { block: 8, flatten: 0.40, deblock: 0.33, chroma: 0.32, quant: 28, mosquito: 0.04, noise: 0.010, sat: 0.92, contrast: 0.98, sharp: 0, warm: 0 };
     }
 
     const degradeState = { active: false, params: null };
@@ -2831,8 +2849,8 @@ void main() {
         cv.classList.add('active');
         video.classList.add('video-proxied');
         const frameInterval = 1 / Math.max(1, knownFps || 60);
-        const tick = () => {
-            if (!interpolationState.active) return;
+        // One crossfade draw at the current position (no scheduling)
+        const drawInterpFrame = () => {
             const t = video.currentTime;
             if (t < interpolationState.lastFrameTime - 0.001) {
                 // seek / replay — re-prime both buffers at the new position
@@ -2851,6 +2869,13 @@ void main() {
             interpCtx.globalAlpha = alpha;
             interpCtx.drawImage(interpolationState.cur, 0, 0);
             interpCtx.globalAlpha = 1;
+        };
+        interpolationState.drawInterpFrame = drawInterpFrame;
+        const tick = () => {
+            if (!interpolationState.active) { interpolationState.rafId = 0; return; }
+            // Paused/ended: freeze the loop — the static frame stays on the canvas
+            if (video.paused || video.ended) { drawInterpFrame(); interpolationState.rafId = 0; return; }
+            drawInterpFrame();
             interpolationState.rafId = requestAnimationFrame(tick);
         };
         interpolationState.rafId = requestAnimationFrame(tick);
@@ -2927,15 +2952,19 @@ void main() {
         } else {
             const srcMin = Math.min(video.videoWidth || 0, video.videoHeight || 0);
             if (srcMin && target.height > srcMin) {
-                // Upscale rung — pixels stay untouched (CSS/compositor scaling);
-                // 4K of a non-4K source interpolates to the display's refresh rate.
-                if (target.height === 2160 && srcMin < 2160 && measuredDisplayHz >= 100) {
+                // Upscale rung — ONLY a resolution change, never degrade/filters.
+                // 4K of a non-4K source additionally lifts the frame rate
+                // (motion interpolation) when the display is fast enough.
+                if (target.height === 2160 && srcMin < 2160 && measuredDisplayHz >= 59) {
                     startInterpolationProxy();
                 } else {
                     stopQualityProxy();
                 }
+            } else if (target.height >= 1080) {
+                // High rung downscale (e.g. 4K → 1080) — resolution only, no degrade
+                stopQualityProxy();
             } else {
-                // Downscale rung — the low-bitrate proxy runs at reduced size
+                // LOW rungs (< 1080) — the low-bitrate degraded proxy
                 startQualityProxy(target.height);
             }
         }
@@ -2943,6 +2972,10 @@ void main() {
     }
 
     video.addEventListener('seeked', () => {
+        if (interpolationState.active && video.paused && typeof interpolationState.drawInterpFrame === 'function') {
+            interpolationState.drawInterpFrame();
+            return;
+        }
         if (qualityProxyOn) drawQualityFrame();
     });
 
