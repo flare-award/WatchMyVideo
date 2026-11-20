@@ -2280,6 +2280,10 @@ input:checked + .slider-toggle:before {
     gap: 2px;
 }
 
+.yt-comment-menu[hidden] {
+    display: none; /* author display:flex above beats the UA [hidden] rule — restore it */
+}
+
 .yt-comment-menu-item {
     display: flex;
     align-items: center;
