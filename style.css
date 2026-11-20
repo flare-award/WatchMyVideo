@@ -130,7 +130,7 @@ body.mode-player.video-active .app-header {
     border-bottom: none;
 }
 
-body.idle.mode-player.video-active .app-header {
+body.header-idle.mode-player.video-active .app-header {
     opacity: 0;
     pointer-events: none;
 }
@@ -854,6 +854,46 @@ body.mode-tiktok .player-wrapper {
     line-height: 1;
 }
 
+.center-flash {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.6);
+    z-index: 23;
+    pointer-events: none;
+    opacity: 0;
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.center-flash i {
+    color: #fff;
+    font-size: 2rem;
+    line-height: 1;
+}
+
+.center-flash .fa-play {
+    padding-left: 6px; /* optical centering of the play triangle */
+}
+
+.center-flash.show {
+    animation: centerFlash 0.5s ease forwards;
+}
+
+@keyframes centerFlash {
+    0%   { opacity: 0.9; transform: translate(-50%, -50%) scale(0.6); }
+    100% { opacity: 0;   transform: translate(-50%, -50%) scale(1.4); }
+}
+
+body.mode-tiktok .center-flash {
+    display: none;
+}
+
 /* TikTok ended state: bare repeat glyph, no backplate, no label */
 body.mode-tiktok .replay-overlay {
     background: #000;
@@ -1523,6 +1563,18 @@ body.studio-light .ambient-canvas {
     z-index: 40;
     overflow: hidden;
     animation: menuFadeIn 0.16s ease;
+}
+
+.settings-menu[data-view="settings-main"] { width: 352px; }
+.settings-menu[data-view="settings-speed"] { width: 384px; }
+.settings-menu[data-view="settings-quality"] { width: 320px; }
+.settings-menu[data-view="settings-subtitles-menu"] { width: 304px; }
+.settings-menu[data-view="settings-sleep"] { width: 304px; }
+
+/* Section switch = the box itself deforms smoothly to the new size */
+.settings-menu.morphing {
+    transition: width 0.32s cubic-bezier(0.25, 0.8, 0.3, 1), height 0.32s cubic-bezier(0.25, 0.8, 0.3, 1);
+    will-change: width, height;
 }
 
 @keyframes menuFadeIn {

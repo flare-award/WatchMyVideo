@@ -157,6 +157,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const tkAuthor = $('tk-author');
     const tkDesc = $('tk-desc');
     const tkPausedBadge = $('tk-paused-badge');
+    const centerFlash = $('center-flash');
+    const centerFlashIcon = $('center-flash-icon');
     const tkComments = $('tk-comments');
     const tkDrawer = $('tk-drawer');
     const tkBackdrop = $('tk-backdrop');
@@ -486,6 +488,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (!isOverlayOpen() && !isDraggingProgress) {
                 document.body.classList.add('idle');
+                document.body.classList.add('header-idle');
             }
         }, IDLE_DELAY_MS);
     }
@@ -518,13 +521,21 @@ document.addEventListener('DOMContentLoaded', () => {
         chromeHideTimer = window.setTimeout(() => {
             if (!isOverlayOpen() && !isDraggingProgress) {
                 document.body.classList.add('idle');
+                if (!pointerRestsOnHeader()) {
+                    document.body.classList.add('header-idle');
+                }
             }
         }, delay);
     }
     playerWrapper.addEventListener('mouseleave', (e) => {
         clearIdle();
         const t = e.relatedTarget;
-        if (t instanceof Element && t.closest('.app-header, .settings-menu, .tk-share-sheet, .seek-preview')) {
+        if (t instanceof Element && t.closest('.app-header')) {
+            showHeaderOnly();
+            scheduleChromeHide(160);
+            return;
+        }
+        if (t instanceof Element && t.closest('.settings-menu, .tk-share-sheet, .seek-preview')) {
             pokeUI();
             return;
         }
@@ -533,7 +544,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Only un-hide the chrome when the pointer is actually over the player
     // (or something floating inside/above it — menus, sheets, seek preview).
     // Moving over the info area below/beside the video must NOT bring it back.
-    const CHROME_HOVER_ZONE = '#player-wrapper, .settings-menu, .tk-share-sheet, .tk-sheet-backdrop, .seek-preview, .app-header';
+    const CHROME_HOVER_ZONE = '#player-wrapper, .settings-menu, .tk-share-sheet, .tk-sheet-backdrop, .seek-preview';
     const appHeaderEl = document.getElementById('app-header');
     const headerBand = () => {
         if (!appHeaderEl) return null;
@@ -550,28 +561,74 @@ document.addEventListener('DOMContentLoaded', () => {
         const el = document.elementFromPoint(lastMouseX, lastMouseY);
         return !!(el && el.closest(CHROME_REST_ZONE));
     };
+    let headerHideTimer = 0;
+    function pointerRestsOnHeader() {
+        if (lastMouseX < 0 || lastMouseY < 0) return false;
+        const hb = headerBand();
+        if (hb && lastMouseY <= hb.bottom && lastMouseX >= hb.left && lastMouseX <= hb.right) return true;
+        const el = document.elementFromPoint(lastMouseX, lastMouseY);
+        return !!(el && el.closest('.app-header'));
+    }
+    function scheduleHeaderHide(delay = 2400) {
+        clearTimeout(headerHideTimer);
+        if (isTikTokMode()) return; // TikTok header never fades
+        headerHideTimer = window.setTimeout(() => {
+            if (pointerRestsOnHeader()) {
+                scheduleHeaderHide();
+                return;
+            }
+            document.body.classList.add('header-idle');
+        }, delay);
+    }
+    function showHeaderOnly() {
+        clearTimeout(headerHideTimer);
+        document.body.classList.remove('header-idle');
+        scheduleHeaderHide();
+    }
     document.addEventListener('mousemove', (e) => {
         lastMouseX = e.clientX;
         lastMouseY = e.clientY;
+        // The header band wins over the player zone: while the header is
+        // hidden it is click-through, so the event target underneath is the
+        // player itself — yet entering this band must reveal ONLY the header.
+        const hb = headerBand();
+        if (hb && e.clientY <= hb.bottom && e.clientX >= hb.left && e.clientX <= hb.right) {
+            showHeaderOnly();
+            scheduleChromeHide(160);
+            return;
+        }
         if (e.target instanceof Element && e.target.closest(CHROME_HOVER_ZONE)) {
+            scheduleHeaderHide(350); // the header yields once the player has the pointer
             pokeUI();
             return;
         }
-        // Header is click-through while idle (opacity 0) — reveal the chrome
-        // as soon as the pointer enters its band, wherever along the width.
-        const hb = headerBand();
-        if (hb && e.clientY <= hb.bottom && e.clientX >= hb.left && e.clientX <= hb.right) {
-            pokeUI();
-        }
     }, { passive: true });
-    document.addEventListener('wheel', pokeUI, { passive: true });
-    ['mousedown', 'touchstart', 'keydown'].forEach((evt) => {
-        document.addEventListener(evt, pokeUI, { passive: true });
-    });
+    // Activity wakes the player chrome ONLY from inside the player. Clicks,
+    // taps and scrolls anywhere else on the page (title, comments, sidebar…)
+    // must not flash the player interface; the header answers for itself.
+    document.addEventListener('wheel', (e) => {
+        if (!(e.target instanceof Element)) return;
+        if (e.target.closest(CHROME_HOVER_ZONE)) pokeUI();
+        else if (e.target.closest('.app-header')) showHeaderOnly();
+    }, { passive: true });
+    playerWrapper.addEventListener('mousedown', pokeUI);
+    playerWrapper.addEventListener('touchstart', pokeUI, { passive: true });
+    if (appHeaderEl) {
+        appHeaderEl.addEventListener('mousedown', showHeaderOnly);
+        appHeaderEl.addEventListener('touchstart', showHeaderOnly, { passive: true });
+        appHeaderEl.addEventListener('mouseleave', () => scheduleHeaderHide(350));
+    }
+    document.addEventListener('keydown', (e) => {
+        const t = e.target;
+        if (t instanceof Element && t.closest('input, textarea, select, [contenteditable="true"]')) return;
+        if (t instanceof Element && t.closest('.app-header')) showHeaderOnly();
+        else pokeUI();
+    }, { passive: true });
     document.addEventListener('mouseleave', () => {
         if (isTikTokMode()) return; // TikTok UI never fades out
         if (!isOverlayOpen()) {
             document.body.classList.add('idle');
+            document.body.classList.add('header-idle');
         }
     });
 
@@ -604,6 +661,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (statsOverlay) statsOverlay.classList.toggle('hidden', !(statsVisible && mode !== 'tiktok'));
         updateTkPausedBadge();
         pokeUI();
+        showHeaderOnly();
     }
 
     modePillButtons.forEach((btn) => {
@@ -1079,7 +1137,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (_) { /* unreadable mtime — skip the date */ }
         }
         if (currentFileSize) parts.push(`<span class="yt-desc-size">${formatBytes(currentFileSize)}</span>`);
-        return parts.join(' ');
+        return parts.join('\u00A0\u00A0\u00A0\u00A0  ');
     }
 
     // Flag for files that report an infinite duration until they are seeked once
@@ -1740,8 +1798,14 @@ document.addEventListener('DOMContentLoaded', () => {
             updateTkPausedBadge();
             return;
         }
-        // YouTube: no center flash on pause/unpause either — seeking or toggling
-        // must never strobe an icon over the frame. The button + chrome own the state.
+        if (!centerFlash || !centerFlashIcon) return;
+        // Never flash while rewinding/scrubbing — only a plain pause/unpause
+        // toggle earns the centre glyph.
+        if (isDraggingProgress || Date.now() < flashSuppressUntil || video.seeking) return;
+        centerFlashIcon.className = iconClass;
+        centerFlash.classList.remove('show');
+        void centerFlash.offsetWidth; // restart the animation on rapid toggles
+        centerFlash.classList.add('show');
     }
 
     function isVideoEndedState() {
@@ -1931,8 +1995,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!hasDuration()) return;
         e.preventDefault();
         wasPlayingBeforeScrub = !video.paused && !video.ended;
+        flashSuppressUntil = Date.now() + 1500; // set before pause() so its event stays silent
         if (wasPlayingBeforeScrub) video.pause();
-        flashSuppressUntil = Date.now() + 1500;
         isDraggingProgress = true;
         progressContainer.classList.add('scrubbing');
         playerWrapper.classList.add('scrubbing');
@@ -1984,6 +2048,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function skipTime(seconds) {
         if (!hasDuration()) return;
+        flashSuppressUntil = Date.now() + 600;
         video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + seconds));
         replayOverlay.classList.add('hidden');
         triggerDoubleTapAnimation(seconds);
@@ -1994,6 +2059,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     function stepFrame(frames) {
         if (!video.paused || !hasDuration()) return;
+        flashSuppressUntil = Date.now() + 600;
         const step = frames / ESTIMATED_FPS;
         video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + step));
     }
@@ -4026,14 +4092,63 @@ void main() {
         }
     });
 
+    // Each section has its own natural width — switching sections morphs the
+    // menu box (width AND height) instead of snapping to the new size.
+    const SETTINGS_VIEW_WIDTHS = {
+        'settings-main': 352,
+        'settings-speed': 384,
+        'settings-quality': 320,
+        'settings-subtitles-menu': 304,
+        'settings-sleep': 304
+    };
+    let settingsMorphTimer = 0;
+
     function switchSettingsView(viewElement) {
-        settingsMenu.querySelectorAll('.settings-view').forEach((v) => {
-            v.classList.add('hidden');
-            v.classList.remove('anim-fwd', 'anim-back');
+        if (!viewElement) return;
+        const views = settingsMenu.querySelectorAll('.settings-view');
+        const currentView = [...views].find((v) => !v.classList.contains('hidden'));
+        const showTarget = () => {
+            views.forEach((v) => {
+                v.classList.add('hidden');
+                v.classList.remove('anim-fwd', 'anim-back');
+            });
+            viewElement.classList.remove('hidden');
+            // Forward into a sub-view slides from the right, back — from the left
+            viewElement.classList.add(viewElement === settingsMain ? 'anim-back' : 'anim-fwd');
+            settingsMenu.setAttribute('data-view', viewElement.id || 'settings-main');
+        };
+        if (!currentView || currentView === viewElement || settingsMenu.classList.contains('hidden') || settingsMenu.classList.contains('as-sheet')) {
+            showTarget();
+            settingsMenu.classList.remove('morphing');
+            settingsMenu.style.width = '';
+            settingsMenu.style.height = '';
+            return;
+        }
+        clearTimeout(settingsMorphTimer);
+        const startWidth = settingsMenu.offsetWidth;
+        const startHeight = settingsMenu.offsetHeight;
+        settingsMenu.style.width = startWidth + 'px';
+        settingsMenu.style.height = startHeight + 'px';
+        showTarget();
+        const maxWidth = Math.max(260, ((playerWrapper && playerWrapper.clientWidth) || window.innerWidth) - 32);
+        const targetWidth = Math.min(SETTINGS_VIEW_WIDTHS[viewElement.id] || startWidth, maxWidth);
+        settingsMenu.style.width = targetWidth + 'px';
+        settingsMenu.style.height = 'auto';
+        const targetHeight = settingsMenu.offsetHeight;
+        settingsMenu.style.width = startWidth + 'px';
+        settingsMenu.style.height = startHeight + 'px';
+        void settingsMenu.offsetWidth; // lock the start box BEFORE transition is enabled
+        settingsMenu.classList.add('morphing');
+        void settingsMenu.offsetWidth;
+        requestAnimationFrame(() => {
+            settingsMenu.style.width = targetWidth + 'px';
+            settingsMenu.style.height = targetHeight + 'px';
         });
-        viewElement.classList.remove('hidden');
-        // Forward into a sub-view slides from the right, back — from the left
-        viewElement.classList.add(viewElement === settingsMain ? 'anim-back' : 'anim-fwd');
+        settingsMorphTimer = window.setTimeout(() => {
+            settingsMenu.classList.remove('morphing');
+            settingsMenu.style.width = '';
+            settingsMenu.style.height = '';
+        }, 360);
     }
 
     settingsMenu.querySelectorAll('.settings-item[data-action]').forEach((item) => {
