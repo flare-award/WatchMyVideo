@@ -381,10 +381,11 @@ document.addEventListener('DOMContentLoaded', () => {
     //  Web Audio — volume boost (lazy graph so the normal path
     //  always uses the element's native volume control)
     // =========================================================
-    // Two loudness presets. The OFF preset is a mild, always-on compressor with
-    // a touch of make-up gain — videos simply sit louder, peaks stay intact.
-    // The ON preset is a firmer, stable-volume normalization for quiet/uneven files.
-    const LOUDNESS_CALM = { threshold: -16, knee: 20, ratio: 2.6, attack: 0.004, release: 0.22, makeup: 1.32 };
+    // Two loudness presets. OFF is deliberately transparent (unity gain, no
+    // compression) — the video plays at its native loudness and the volume
+    // slider is meaningful again. ON is a firmer, stable-volume normalization
+    // for quiet/uneven files (opt-in via «Постоянный уровень громкости»).
+    const LOUDNESS_CALM = { threshold: 0, knee: 0, ratio: 1, attack: 0.003, release: 0.25, makeup: 1.0 };
     const LOUDNESS_STRONG = { threshold: -30, knee: 26, ratio: 12, attack: 0.003, release: 0.26, makeup: 1.5 };
 
     function applyLoudness() {
@@ -3785,6 +3786,7 @@ void main() {
         resumeAudioContext();
         isBoosted = !isBoosted;
         btnVolumeBoost.classList.toggle('active', isBoosted);
+        btnVolumeBoost.setAttribute('aria-pressed', isBoosted ? 'true' : 'false');
         applyBoostGain();
     });
 
