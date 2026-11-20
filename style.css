@@ -3294,3 +3294,11 @@ body.mode-tiktok .tk-backdrop {
     from { transform: translateY(105%); }
     to   { transform: none; }
 }
+
+/* Fullscreen: PiP and theater make no sense there — hide them */
+#player-wrapper:fullscreen #btn-pip,
+#player-wrapper:fullscreen #btn-theater,
+#player-wrapper:-webkit-full-screen #btn-pip,
+#player-wrapper:-webkit-full-screen #btn-theater {
+    display: none;
+}
