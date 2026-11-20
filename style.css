@@ -2645,13 +2645,14 @@ input:checked + .slider-toggle:before {
     display: block;
 }
 
-/* Music covers keep their whole square artwork — dark bars on the sides */
+/* Music covers keep their whole square artwork — pure black bars on the sides */
 .suggest-thumb.is-audio {
-    background: #101013;
+    background: #000;
 }
 
 .suggest-thumb.is-audio img {
     object-fit: contain;
+    background: #000;
 }
 
 .suggest-thumb-icon {
