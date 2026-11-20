@@ -71,6 +71,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Progress bar
     const progressContainer = $('progress-container');
+    const progressHover = $('progress-hover');
+    let lastHoverRatio = null;
+
+    // The brighter "playhead → cursor" segment, YouTube-style
+    function updateProgressHover(ratio) {
+        if (!progressHover || !hasDuration()) return;
+        const played = video.currentTime / video.duration;
+        const a = Math.min(played, ratio);
+        const b = Math.max(played, ratio);
+        progressHover.style.left = (a * 100) + '%';
+        progressHover.style.width = (Math.max(0, b - a) * 100) + '%';
+        progressHover.classList.add('visible');
+        lastHoverRatio = ratio;
+    }
+
+    function hideProgressHover() {
+        if (!progressHover) return;
+        progressHover.classList.remove('visible');
+        lastHoverRatio = null;
+    }
     const progressBuffered = $('progress-buffered');
     const progressPlayed = $('progress-played');
     const progressScrubber = $('progress-scrubber');
@@ -1461,6 +1481,7 @@ document.addEventListener('DOMContentLoaded', () => {
             progressScrubber.style.left = percent + '%';
             progressContainer.setAttribute('aria-valuenow', String(Math.round(percent)));
             currentTimeEl.textContent = formatTime(video.currentTime);
+            if (lastHoverRatio !== null) updateProgressHover(lastHoverRatio);
         }
         updateSubtitles(video.currentTime);
     });
@@ -1485,6 +1506,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!hasDuration()) return;
         const rect = progressContainer.getBoundingClientRect();
         const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        updateProgressHover(ratio);
         if (!isDraggingProgress) {
             const tooltipX = ratio * rect.width;
             progressTooltip.style.left = Math.max(18, Math.min(rect.width - 18, tooltipX)) + 'px';
@@ -1497,6 +1519,7 @@ document.addEventListener('DOMContentLoaded', () => {
     progressContainer.addEventListener('pointerleave', () => {
         progressTooltip.style.display = 'none';
         hideSeekPreview();
+        hideProgressHover();
     });
 
     function seekToPosition(e) {
@@ -1512,6 +1535,7 @@ document.addEventListener('DOMContentLoaded', () => {
         progressTooltip.textContent = formatTime(time);
         progressTooltip.style.display = 'block';
         showSeekPreview(ratio);
+        updateProgressHover(ratio);
     }
 
     progressContainer.addEventListener('pointerdown', (e) => {
@@ -1540,6 +1564,7 @@ document.addEventListener('DOMContentLoaded', () => {
         playerWrapper.classList.remove('scrubbing');
         progressTooltip.style.display = 'none';
         hideSeekPreview();
+        hideProgressHover();
         scheduleIdle();
     }
 
@@ -2239,20 +2264,28 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     const seekPreviewCheckbox = $('seek-preview-checkbox');
 
+    let seekPreviewCssWidth = 168;
+
     function drawSeekPreview(source) {
         if (!seekPreviewEnabled || !seekPreviewCanvas) return;
         if (currentIsAudio) return;
         const sw = source.videoWidth, sh = source.videoHeight;
         if (!sw || !sh) return;
+        const ar = sw / sh;
+        // 100 CSS px tall, width follows the SOURCE aspect — side bars are impossible
+        let dispW = Math.round(100 * ar);
+        dispW = Math.max(48, Math.min(340, dispW));
+        seekPreviewCssWidth = dispW;
+        const backingH = 200;
+        const backingW = Math.max(96, dispW * 2);
+        if (seekPreviewCanvas.width !== backingW) seekPreviewCanvas.width = backingW;
+        if (seekPreviewCanvas.height !== backingH) seekPreviewCanvas.height = backingH;
         const ctx = seekPreviewCanvas.getContext('2d');
-        const cw = seekPreviewCanvas.width, ch = seekPreviewCanvas.height;
         ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, cw, ch);
-        const scale = Math.min(cw / sw, ch / sh);
-        const dw = Math.max(2, Math.round(sw * scale));
-        const dh = Math.max(2, Math.round(sh * scale));
+        ctx.fillRect(0, 0, backingW, backingH);
         try {
-            ctx.drawImage(source, Math.round((cw - dw) / 2), Math.round((ch - dh) / 2), dw, dh);
+            // Aspect ratios match by construction — edge-to-edge, zero padding
+            ctx.drawImage(source, 0, 0, backingW, backingH);
         } catch (_) { /* frame not decoded yet */ }
     }
 
@@ -2291,7 +2324,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function positionSeekPreview(ratio) {
         if (!seekPreview) return;
         const rect = progressContainer.getBoundingClientRect();
-        const halfW = 84; // half of the 168px preview frame
+        const halfW = seekPreviewCssWidth / 2;
         const x = Math.max(halfW + 2, Math.min(rect.width - halfW - 2, ratio * rect.width));
         seekPreview.style.left = x + 'px';
     }
