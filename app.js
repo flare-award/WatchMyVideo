@@ -19,8 +19,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const tapAnimationContent = $('tap-animation-content');
     const subtitleOverlay = $('subtitle-overlay');
 
-    const centerFlash = $('center-flash');
-    const centerFlashIcon = $('center-flash-icon');
     const replayOverlay = $('replay-overlay');
     const btnReplay = $('btn-replay');
 
@@ -190,6 +188,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let idleTimer = null;
     let isDraggingProgress = false;
     let wasPlayingBeforeScrub = false; // resume only on pointer-release, never mid-drag
+    let flashSuppressUntil = 0;        // no center pause/play glyph while scrubbing
     let currentVideoKey = null;
     let currentFileName = '';
     let currentFileSize = 0;
@@ -262,6 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const likeCountKey = (k) => `wmv_like_count_${k}`;
     const saveCountKey = (k) => `wmv_save_count_${k}`;
     const shareCountKey = (k) => `wmv_share_count_${k}`;
+    const viewsKey = (k) => `wmv_views_${k}`;
     const likedKey = (k) => `wmv_liked_${k}`;
     const dislikedKey = (k) => `wmv_disliked_${k}`;
     const savedKey = (k) => `wmv_saved_${k}`;
@@ -279,6 +279,64 @@ document.addEventListener('DOMContentLoaded', () => {
         toastEl.classList.add('show');
         clearTimeout(toastTimer);
         toastTimer = setTimeout(() => toastEl.classList.remove('show'), duration);
+    }
+
+    // Deterministic PRNG — every video keeps its own plausible fake stats forever
+    function seededRand01(seed) {
+        let h = 2166136261 >>> 0;
+        const str = String(seed);
+        for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+        return () => {
+            h ^= h >>> 13; h ^= h << 17; h ^= h >>> 5; h >>>= 0;
+            return h / 4294967296;
+        };
+    }
+
+    function seededVideoStats(key) {
+        const rnd = seededRand01('stats:' + key);
+        // log-uniform views: anything from a quiet upload to a popular one
+        const views = Math.floor(Math.exp(Math.log(900) + rnd() * (Math.log(4500000) - Math.log(900))));
+        const likes = Math.max(9, Math.floor(views * (0.035 + rnd() * 0.055)));
+        const saves = Math.floor(likes * (0.06 + rnd() * 0.15));
+        const shares = Math.floor(likes * (0.12 + rnd() * 0.40));
+        return { views, likes, saves, shares };
+    }
+
+    // Seed the random counters once per video; afterwards real interactions drive them
+    function ensureVideoStats(key) {
+        if (!key) return null;
+        if (storageGet(viewsKey(key), null) === null) {
+            const seed = seededVideoStats(key);
+            storageSet(viewsKey(key), String(seed.views));
+            storageSet(likeCountKey(key), String(seed.likes));
+            storageSet(saveCountKey(key), String(seed.saves));
+            storageSet(shareCountKey(key), String(seed.shares));
+            return seed;
+        }
+        return {
+            views: parseInt(storageGet(viewsKey(key), '0'), 10) || 0,
+            likes: parseInt(storageGet(likeCountKey(key), '0'), 10) || 0,
+            saves: parseInt(storageGet(saveCountKey(key), '0'), 10) || 0,
+            shares: parseInt(storageGet(shareCountKey(key), '0'), 10) || 0
+        };
+    }
+
+    function pluralRu(n, forms) { // ['просмотр', 'просмотра', 'просмотров']
+        const mod10 = n % 10, mod100 = n % 100;
+        if (mod10 === 1 && mod100 !== 11) return forms[0];
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return forms[1];
+        return forms[2];
+    }
+
+    function formatViewsFull(n) {
+        return Number(n || 0).toLocaleString('ru-RU');
+    }
+
+    function formatViewsCompactRu(n) {
+        n = Number(n) || 0;
+        if (n >= 1e6) return (n / 1e6).toFixed(1).replace('.', ',').replace(/,0$/, '') + ' млн';
+        if (n >= 1e3) return (n / 1e3).toFixed(1).replace('.', ',').replace(/,0$/, '') + ' тыс.';
+        return String(n);
     }
 
     function formatCount(n) {
@@ -539,6 +597,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         applyLoopForMode();
         if (persist) storageSet(MODE_KEY, mode);
+        if (statsOverlay) statsOverlay.classList.toggle('hidden', !(statsVisible && mode !== 'tiktok'));
         updateTkPausedBadge();
         pokeUI();
     }
@@ -756,6 +815,7 @@ document.addEventListener('DOMContentLoaded', () => {
     //  "Недавно опубликованные" — лента = ваши локальные видео
     // =========================================================
     function registerRecentVideo(entry) {
+        ensureVideoStats(entry.key);
         const existing = recentVideos.findIndex((v) => v.key === entry.key);
         if (existing !== -1) {
             recentVideos.splice(existing, 1);
@@ -831,9 +891,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const sub = document.createElement('div');
             sub.className = 'suggest-sub';
             const sizePart = v.size ? formatBytes(v.size) : '';
+            const vStats = ensureVideoStats(v.key);
+            const viewsPart = vStats ? `${formatViewsCompactRu(vStats.views)} ${pluralRu(vStats.views, ['просмотр', 'просмотра', 'просмотров'])}` : '';
             sub.textContent = v.isDemo
                 ? 'WatchMyVideo · демо'
-                : ['WatchMyVideo · локальный файл', sizePart].filter(Boolean).join(' · ');
+                : [viewsPart, sizePart || 'локальный файл'].filter(Boolean).join(' · ');
             meta.appendChild(title);
             meta.appendChild(sub);
 
@@ -963,9 +1025,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function buildDescription() {
         const parts = [];
+        const stats = ensureVideoStats(currentVideoKey);
+        if (stats) {
+            parts.push(`${formatViewsFull(stats.views)} ${pluralRu(stats.views, ['просмотр', 'просмотра', 'просмотров'])}`);
+        }
         if (currentFileCreated) {
             try {
-                parts.push('Создано: ' + new Date(currentFileCreated).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }));
+                parts.push(new Date(currentFileCreated).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }));
             } catch (_) { /* unreadable mtime — skip the date */ }
         }
         if (currentFileSize) parts.push(formatBytes(currentFileSize));
@@ -1059,16 +1125,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function refreshSocialUI() {
         const key = currentVideoKey;
+        if (key) ensureVideoStats(key);
         const liked = key ? readLikeState(key) : { count: 0, liked: false, disliked: false };
         const saved = key ? storageGet(savedKey(key), '0') === '1' : false;
         const subscribed = storageGet(SUBSCRIBED_KEY, '0') === '1';
 
-        // YouTube buttons
+        // YouTube buttons — icons are outlined at rest, filled white when toggled
         likeCountEl.textContent = formatCount(liked.count);
         btnLike.classList.toggle('toggled', liked.liked);
         btnLike.setAttribute('aria-pressed', liked.liked ? 'true' : 'false');
         btnDislike.classList.toggle('toggled', liked.disliked);
         btnDislike.setAttribute('aria-pressed', liked.disliked ? 'true' : 'false');
+        const likeBtnIcon = btnLike.querySelector('i');
+        const dislikeBtnIcon = btnDislike.querySelector('i');
+        if (likeBtnIcon) likeBtnIcon.className = (liked.liked ? 'fa-solid' : 'fa-regular') + ' fa-thumbs-up';
+        if (dislikeBtnIcon) dislikeBtnIcon.className = (liked.disliked ? 'fa-solid' : 'fa-regular') + ' fa-thumbs-down';
         btnSave.classList.toggle('toggled', saved);
         btnSave.setAttribute('aria-pressed', saved ? 'true' : 'false');
         saveIcon.className = (saved ? 'fa-solid' : 'fa-regular') + ' fa-bookmark';
@@ -1249,7 +1320,8 @@ document.addEventListener('DOMContentLoaded', () => {
         likeBtn.type = 'button';
         likeBtn.className = 'yt-comment-action yt-comment-like' + (reaction.liked ? ' active' : '');
         likeBtn.setAttribute('aria-label', 'Нравится');
-        likeBtn.innerHTML = '<i class="fa-solid fa-thumbs-up"></i><span class="yt-comment-like-count"></span>';
+        likeBtn.setAttribute('aria-pressed', reaction.liked ? 'true' : 'false');
+        likeBtn.innerHTML = (reaction.liked ? '<i class="fa-solid fa-thumbs-up"></i>' : '<i class="fa-regular fa-thumbs-up"></i>') + '<span class="yt-comment-like-count"></span>';
         likeBtn.querySelector('.yt-comment-like-count').textContent = String(reaction.likes);
         likeBtn.addEventListener('click', () => {
             const r = readCommentReaction(comment);
@@ -1262,7 +1334,8 @@ document.addEventListener('DOMContentLoaded', () => {
         dislikeBtn.type = 'button';
         dislikeBtn.className = 'yt-comment-action yt-comment-dislike' + (reaction.disliked ? ' active' : '');
         dislikeBtn.setAttribute('aria-label', 'Не нравится');
-        dislikeBtn.innerHTML = '<i class="fa-solid fa-thumbs-down"></i>';
+        dislikeBtn.setAttribute('aria-pressed', reaction.disliked ? 'true' : 'false');
+        dislikeBtn.innerHTML = reaction.disliked ? '<i class="fa-solid fa-thumbs-down"></i>' : '<i class="fa-regular fa-thumbs-down"></i>';
         dislikeBtn.addEventListener('click', () => {
             const r = readCommentReaction(comment);
             patchCommentReaction(comment, { disliked: !r.disliked, liked: false, likes: r.disliked ? r.likes : (r.liked ? Math.max(0, r.likes - 1) : r.likes) });
@@ -1272,9 +1345,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const creatorBtn = document.createElement('button');
         creatorBtn.type = 'button';
         creatorBtn.className = 'yt-comment-action yt-comment-creator' + (reaction.creator ? ' active' : '');
-        creatorBtn.setAttribute('aria-label', 'С лайком от автора');
-        creatorBtn.title = 'С лайком от автора';
-        creatorBtn.innerHTML = '<i class="fa-solid fa-thumbs-up"></i>';
+        creatorBtn.setAttribute('aria-label', 'Лайк от автора');
+        creatorBtn.title = 'Лайк от автора';
+        creatorBtn.setAttribute('aria-pressed', reaction.creator ? 'true' : 'false');
+        creatorBtn.innerHTML = reaction.creator ? '<i class="fa-solid fa-heart"></i>' : '<i class="fa-regular fa-heart"></i>';
         creatorBtn.addEventListener('click', () => {
             const r = readCommentReaction(comment);
             patchCommentReaction(comment, { creator: !r.creator });
@@ -1302,17 +1376,62 @@ document.addEventListener('DOMContentLoaded', () => {
         item.appendChild(body);
 
         if (onDelete) {
-            const del = document.createElement('button');
-            del.type = 'button';
-            del.className = 'yt-comment-delete';
-            del.title = 'Удалить комментарий';
-            del.setAttribute('aria-label', 'Удалить комментарий');
-            del.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
-            del.addEventListener('click', onDelete);
-            item.appendChild(del);
+            const more = document.createElement('div');
+            more.className = 'yt-comment-more';
+
+            const moreBtn = document.createElement('button');
+            moreBtn.type = 'button';
+            moreBtn.className = 'yt-comment-more-btn';
+            moreBtn.title = 'Действия';
+            moreBtn.setAttribute('aria-label', 'Действия с комментарием');
+            moreBtn.setAttribute('aria-haspopup', 'menu');
+            moreBtn.setAttribute('aria-expanded', 'false');
+            moreBtn.innerHTML = '<i class="fa-solid fa-ellipsis-vertical"></i>';
+
+            const menu = document.createElement('div');
+            menu.className = 'yt-comment-menu';
+            menu.setAttribute('role', 'menu');
+            menu.hidden = true;
+
+            const delItem = document.createElement('button');
+            delItem.type = 'button';
+            delItem.className = 'yt-comment-menu-item';
+            delItem.setAttribute('role', 'menuitem');
+            delItem.innerHTML = '<i class="fa-solid fa-trash-can"></i><span>Удалить</span>';
+            delItem.addEventListener('click', () => {
+                closeAllCommentMenus();
+                onDelete();
+            });
+
+            moreBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const willOpen = menu.hidden;
+                closeAllCommentMenus();
+                if (willOpen) {
+                    menu.hidden = false;
+                    moreBtn.setAttribute('aria-expanded', 'true');
+                }
+            });
+
+            menu.appendChild(delItem);
+            more.appendChild(moreBtn);
+            more.appendChild(menu);
+            item.appendChild(more);
         }
         return item;
     }
+
+    // Close any open comment «⋮» menus (click-away + Escape)
+    function closeAllCommentMenus() {
+        document.querySelectorAll('.yt-comment-menu').forEach((m) => { m.hidden = true; });
+        document.querySelectorAll('.yt-comment-more-btn[aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+    }
+    document.addEventListener('click', (e) => {
+        if (!(e.target instanceof Element) || !e.target.closest('.yt-comment-more')) closeAllCommentMenus();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeAllCommentMenus();
+    });
 
     function tkCommentNode(comment, onDelete) {
         const item = document.createElement('div');
@@ -1477,8 +1596,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function updateTkPausedBadge() {
+    function updateTkPausedBadge(force) {
         if (!tkPausedBadge) return;
+        if (!force && (isDraggingProgress || Date.now() < flashSuppressUntil)) return;
         const show = document.body.classList.contains('mode-tiktok')
             && video.paused
             && !video.ended
@@ -1493,10 +1613,8 @@ document.addEventListener('DOMContentLoaded', () => {
             updateTkPausedBadge();
             return;
         }
-        centerFlashIcon.className = iconClass;
-        centerFlash.classList.remove('show');
-        void centerFlash.offsetWidth; // restart animation
-        centerFlash.classList.add('show');
+        // YouTube: no center flash on pause/unpause either — seeking or toggling
+        // must never strobe an icon over the frame. The button + chrome own the state.
     }
 
     function isVideoEndedState() {
@@ -1687,6 +1805,7 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         wasPlayingBeforeScrub = !video.paused && !video.ended;
         if (wasPlayingBeforeScrub) video.pause();
+        flashSuppressUntil = Date.now() + 1500;
         isDraggingProgress = true;
         progressContainer.classList.add('scrubbing');
         playerWrapper.classList.add('scrubbing');
@@ -1706,10 +1825,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function endScrubbing() {
         if (!isDraggingProgress) return;
         isDraggingProgress = false;
+        flashSuppressUntil = Date.now() + 600; // the resume "play" must not flash the icon either
         if (wasPlayingBeforeScrub && video.paused && !video.ended) {
             video.play().catch(() => {});
         }
         wasPlayingBeforeScrub = false;
+        updateTkPausedBadge(true);
         progressContainer.classList.remove('scrubbing');
         playerWrapper.classList.remove('scrubbing');
         progressTooltip.style.display = 'none';
@@ -2529,12 +2650,42 @@ document.addEventListener('DOMContentLoaded', () => {
     let fpsSampling = false;
 
     let sourceMinDim = 0;      // min(videoWidth, videoHeight) of the loaded file
+    // rAF-measured refresh rate of the current display. A ?displayHz=N query
+    // overrides the measurement — escape hatch for adaptive-sync displays
+    // whose reported cadence is not their actual refresh rate.
+    let displayHzOverride = 0;
+    try {
+        const v = parseFloat(new URLSearchParams(window.location.search).get('displayHz') || '0');
+        if (v >= 30 && v <= 240) displayHzOverride = v;
+    } catch (_) { displayHzOverride = 0; }
+    let measuredDisplayHz = displayHzOverride;
     function qualityLabel(height) {
         const h = Number(height) || 0;
         if (!h) return 'Авто';
         // fps is always shown; if the real rate is not measurable, 60 is assumed.
+        // The 4K rung of a non-4K source presents a display-rate crossfade.
+        if (h === 2160 && sourceMinDim > 0 && sourceMinDim < 2160 && measuredDisplayHz >= 59) {
+            return `2160p${Math.round(measuredDisplayHz)}`;
+        }
         return `${h}p${knownFps || 60}`;
     }
+    (function startDisplayHzProbe() {
+        let last = 0;
+        const deltas = [];
+        const step = (now) => {
+            if (last) deltas.push(now - last);
+            last = now;
+            if (deltas.length < 45) { requestAnimationFrame(step); return; }
+            const sorted = deltas.slice().sort((a, b) => a - b);
+            const mid = sorted[Math.floor(sorted.length / 2)];
+            if (!displayHzOverride) {
+                const hz = mid > 0 ? Math.round(1000 / mid) : 0;
+                if (hz > measuredDisplayHz) measuredDisplayHz = hz;
+            }
+            if (updateQualityUI) updateQualityUI();
+        };
+        requestAnimationFrame(step);
+    })();
 
     function resetFpsSampler() {
         knownFps = null;
@@ -2674,6 +2825,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let glCtx = null;
     let glProgram = null;
     let glTex = null;
+    let glTexPrev = null;
     let glLocations = null;
     let glUsable = null;
 
@@ -2687,6 +2839,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const vsSource = 'attribute vec2 aPos; varying vec2 vUv; void main() { vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }';
         const fsSource = `precision highp float;
 uniform sampler2D uTex;
+uniform sampler2D uTexPrev;
+uniform float uBlend;
 uniform float uDegrade;
 uniform float uBlockPx;
 uniform float uQuant;
@@ -2791,8 +2945,10 @@ void main() {
         outc = clamp(rec, 0.0, 1.0);
     } else {
         // Neutral pass — the quality proxy never recolors the video.
-        // uSharp > 0 adds a very light unsharp mask (source-pixel radius),
-        // the "~5% crisper" 4K treatment. 0 keeps pixels untouched.
+        // uBlend mixes the previous decoded frame with the current one
+        // (TV-style motion smoothing — the 4K rung only); uSharp adds a very
+        // light unsharp mask, the "~5% crisper" 4K treatment.
+        c = mix(texture2D(uTexPrev, vUv).rgb, c, uBlend);
         if (uSharp > 0.001) {
             vec3 cN = texture2D(uTex, vUv - vec2(0.0, uTexel.y)).rgb;
             vec3 cS = texture2D(uTex, vUv + vec2(0.0, uTexel.y)).rgb;
@@ -2841,8 +2997,18 @@ void main() {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        // Sibling texture for the previous frame — always 1×1 black until 4K fills it
+        glTexPrev = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, glTexPrev);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
+        gl.bindTexture(gl.TEXTURE_2D, glTex);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
         glLocations = {
+            uTex: gl.getUniformLocation(program, 'uTex'),
             uDegrade: gl.getUniformLocation(program, 'uDegrade'),
             uBlockPx: gl.getUniformLocation(program, 'uBlockPx'),
             uQuant: gl.getUniformLocation(program, 'uQuant'),
@@ -2855,7 +3021,11 @@ void main() {
             uResolution: gl.getUniformLocation(program, 'uResolution'),
             uSharp: gl.getUniformLocation(program, 'uSharp'),
             uTexel: gl.getUniformLocation(program, 'uTexel'),
+            uTexPrev: gl.getUniformLocation(program, 'uTexPrev'),
+            uBlend: gl.getUniformLocation(program, 'uBlend'),
         };
+        gl.uniform1i(glLocations.uTex, 0);
+        gl.uniform1i(glLocations.uTexPrev, 1);
         glCtx = gl;
         glProgram = program;
         glUsable = true;
@@ -2891,16 +3061,28 @@ void main() {
         const gl = glCtx;
         qualityCanvas.style.filter = 'none';
         gl.useProgram(glProgram);
-        gl.bindTexture(gl.TEXTURE_2D, glTex);
-        try {
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
-        } catch (_) {
-            return; // frame not decodable yet
+        const isFourK = degradeState.active && degradeState.mode === 'fourk';
+        if (isFourK) {
+            // 4K rung: textures are managed by the frame advancer — nothing to upload here
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, fourKState.textures[fourKState.cur]);
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, fourKState.textures[1 - fourKState.cur]);
+        } else {
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, glTex);
+            try {
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+            } catch (_) {
+                return; // frame not decodable yet
+            }
+            // uTexPrev mirrors uTex; uBlend stays 1 elsewhere so the mix is a no-op
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, glTex);
         }
         gl.viewport(0, 0, qualityCanvas.width, qualityCanvas.height);
         const isDegrade = degradeState.active && degradeState.mode === 'degrade' && degradeState.params;
-        const isEnhance = degradeState.active && degradeState.mode === 'enhance' && degradeState.params;
-        const p = (isDegrade || isEnhance) ? degradeState.params : { block: 8, quant: 32, mosquito: 0, noise: 0, chroma: 0, flatten: 0, deblock: 0 };
+        const p = (isDegrade || isFourK) ? degradeState.params : { block: 8, quant: 32, mosquito: 0, noise: 0, chroma: 0, flatten: 0, deblock: 0 };
         gl.uniform1f(glLocations.uDegrade, isDegrade ? 1 : 0);
         gl.uniform1f(glLocations.uBlockPx, p.block);
         gl.uniform1f(glLocations.uQuant, p.quant);
@@ -2909,7 +3091,8 @@ void main() {
         gl.uniform1f(glLocations.uChroma, p.chroma || 0);
         gl.uniform1f(glLocations.uFlatten, p.flatten || 0);
         gl.uniform1f(glLocations.uDeblock, p.deblock || 0);
-        gl.uniform1f(glLocations.uSharp, isEnhance ? (p.sharp || 0) : 0);
+        gl.uniform1f(glLocations.uSharp, isFourK ? (p.sharp || 0) : 0);
+        gl.uniform1f(glLocations.uBlend, isFourK ? fourKState.blend : 1);
         gl.uniform2f(glLocations.uTexel, 1 / Math.max(1, video.videoWidth || 1), 1 / Math.max(1, video.videoHeight || 1));
         gl.uniform1f(glLocations.uTime, (performance.now() % 100000) / 1000);
         gl.uniform2f(glLocations.uResolution, qualityCanvas.width, qualityCanvas.height);
@@ -2920,14 +3103,6 @@ void main() {
         if (!qualityCtx) qualityCtx = qualityCanvas.getContext('2d', { alpha: false });
         if (!qualityCtx) return;
         const w = qualityCanvas.width, h = qualityCanvas.height;
-        if (degradeState.active && degradeState.mode === 'enhance') {
-            qualityCtx.filter = 'none';
-            qualityCtx.imageSmoothingEnabled = true;
-            qualityCtx.imageSmoothingQuality = 'high';
-            qualityCtx.drawImage(video, 0, 0, w, h);
-            qualityCanvas.style.filter = 'none';
-            return;
-        }
         if (degradeState.active && degradeState.mode === 'degrade' && degradeState.params) {
             const p = degradeState.params;
             // Block DCT look without WebGL: coarse DC grid + level quantization
@@ -3008,22 +3183,99 @@ void main() {
         drawQualityFrame();
     }
 
-    // 4K rung on a non-4K source — resolution-only upscale on the GPU with a
-    // whisper (~5%) of sharpening. Canvas stays at SOURCE resolution; the CSS
-    // upscales losslessly. Frame pacing is exactly the source's — full fps.
-    function startEnhanceProxy(height) {
+    // ---------- 4K rung (non-4K sources): display-rate crossfade + whisper of sharpen ----------
+    // The picture is never recolored; the GPU blends the previous decoded frame
+    // with the current one at display rate (TV-style motion smoothing) in the
+    // same pass as the ~5% unsharp mask. Canvas stays at SOURCE resolution —
+    // the CSS upscales losslessly. The file itself is untouched, of course.
+    const fourKState = {
+        active: false,
+        textures: null,
+        cur: 0,
+        lastFrameTime: -1,
+        frameInterval: 1 / 60,
+        blend: 1,
+        primed: false,
+        rafId: 0
+    };
+
+    function makeFourKTexture(gl) {
+        const tex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
+        return tex;
+    }
+
+    function uploadFourKFrame(rePrime) {
+        const gl = glCtx;
+        if (!fourKState.textures) fourKState.textures = [makeFourKTexture(gl), makeFourKTexture(gl)];
+        const t = video.currentTime;
+        if (rePrime || !fourKState.primed || t < fourKState.lastFrameTime - 0.001) {
+            // first frame / seek / replay — both slots show the same picture
+            gl.activeTexture(gl.TEXTURE0);
+            for (let i = 0; i < 2; i++) {
+                gl.bindTexture(gl.TEXTURE_2D, fourKState.textures[i]);
+                try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video); } catch (_) { /* frame gone */ }
+            }
+            fourKState.cur = 0;
+            fourKState.lastFrameTime = t;
+            fourKState.primed = true;
+            fourKState.blend = 1;
+            return;
+        }
+        if (t - fourKState.lastFrameTime >= fourKState.frameInterval * 0.5) {
+            fourKState.cur = 1 - fourKState.cur; // the stale slot becomes the new current frame
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, fourKState.textures[fourKState.cur]);
+            try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video); } catch (_) { /* frame gone */ }
+            fourKState.lastFrameTime = t;
+        }
+    }
+
+    function drawFourKFrame() {
+        if (!fourKState.active || !glCtx) return;
+        const fi = fourKState.frameInterval;
+        let alpha = fi > 0 ? (video.currentTime - fourKState.lastFrameTime) / fi : 1;
+        alpha = Math.max(0, Math.min(1, alpha));
+        if (video.paused || video.ended) alpha = 1; // a paused frame must be exact
+        fourKState.blend = Math.pow(alpha, 1.6);    // settle fast — less double image
+        drawQualityFrameGL();
+    }
+
+    function fourKTick() {
+        if (!fourKState.active) { fourKState.rafId = 0; return; }
+        uploadFourKFrame(false); // picks up seeks and newly decoded frames on its own
+        drawFourKFrame();
+        fourKState.rafId = requestAnimationFrame(fourKTick);
+    }
+
+    function startFourKProxy(height) {
         if (!height || !video.videoWidth || !video.videoHeight) return;
         stopQualityProxy();
+        if (!ensureEnhanceGL()) { stopQualityProxy(); return; } // no GL — play natively
         degradeState.active = true;
-        degradeState.mode = 'enhance';
+        degradeState.mode = 'fourk';
         degradeState.params = { block: 8, flatten: 0, deblock: 0, chroma: 0, quant: 32, mosquito: 0, noise: 0, sat: 1, contrast: 1, sharp: 0.05 };
         qualityCanvas.width = Math.max(2, video.videoWidth);
         qualityCanvas.height = Math.max(2, video.videoHeight);
         qualityCanvasHeight = height;
         qualityProxyOn = true;
+        fourKState.active = true;
+        fourKState.primed = false;
+        fourKState.lastFrameTime = -1;
+        fourKState.cur = 0;
+        fourKState.blend = 1;
+        fourKState.frameInterval = 1 / Math.max(12, knownFps || 60);
         qualityCanvas.classList.add('active');
         video.classList.add('video-proxied');
-        attachQualityPumps();
+        uploadFourKFrame(true);
+        if (fourKState.rafId) cancelAnimationFrame(fourKState.rafId);
+        fourKTick();
     }
 
     function startQualityProxy(height) {
@@ -3050,6 +3302,10 @@ void main() {
 
     function stopQualityProxy() {
         qualityProxyOn = false;
+        fourKState.active = false;
+        if (fourKState.rafId) cancelAnimationFrame(fourKState.rafId);
+        fourKState.rafId = 0;
+        fourKState.primed = false;
         degradeState.active = false;
         degradeState.params = null;
         degradeState.mode = 'degrade';
@@ -3068,10 +3324,9 @@ void main() {
             const srcMin = Math.min(video.videoWidth || 0, video.videoHeight || 0);
             if (srcMin && target.height > srcMin) {
                 // Upscale rung — ONLY a resolution change, never degrade/filters.
-                // 4K of a non-4K source gets a whisper (~5%) of GPU sharpening —
-                // frame rate is untouched, motion is exactly the source's.
+                // 4K of a non-4K source: display-rate crossfade + ~5% sharpen.
                 if (target.height === 2160 && srcMin < 2160) {
-                    startEnhanceProxy(2160);
+                    startFourKProxy(2160);
                 } else {
                     stopQualityProxy();
                 }
@@ -3087,6 +3342,7 @@ void main() {
     }
 
     video.addEventListener('seeked', () => {
+        if (fourKState.active) { uploadFourKFrame(true); drawFourKFrame(); return; }
         if (qualityProxyOn) drawQualityFrame();
     });
 
@@ -3188,7 +3444,9 @@ void main() {
     function setStatsVisible(visible) {
         statsVisible = !!visible;
         storageSet('wmv_stats', statsVisible ? '1' : '0');
-        if (statsOverlay) statsOverlay.classList.toggle('hidden', !statsVisible);
+        // The nerds panel does not exist in TikTok mode — the preference itself
+        // is kept, it simply never shows up there.
+        if (statsOverlay) statsOverlay.classList.toggle('hidden', !(statsVisible && !isTikTokMode()));
         if (ctxStatsToggle) ctxStatsToggle.setAttribute('aria-checked', statsVisible ? 'true' : 'false');
         if (statsVisible) updateStatsUI();
     }
@@ -3212,6 +3470,7 @@ void main() {
     if (playerWrapper) {
         playerWrapper.addEventListener('contextmenu', (e) => {
             e.preventDefault();
+            if (isTikTokMode()) { hideVideoContextMenu(); return; } // nothing to offer — stats live elsewhere
             showVideoContextMenu(e.clientX, e.clientY);
         });
     }
@@ -3234,10 +3493,10 @@ void main() {
     document.addEventListener('scroll', hideVideoContextMenu, true);
     // Live numbers (viewport/res/volume) — only while the panel is actually on screen
     window.setInterval(() => {
-        if (statsVisible && !document.hidden) refreshStatsDynamic();
+        if (statsVisible && !document.hidden && !isTikTokMode()) refreshStatsDynamic();
     }, 900);
     if (ctxStatsToggle) ctxStatsToggle.setAttribute('aria-checked', statsVisible ? 'true' : 'false');
-    if (statsVisible && statsOverlay) statsOverlay.classList.remove('hidden');
+    if (statsVisible && statsOverlay && !isTikTokMode()) statsOverlay.classList.remove('hidden');
 
     // =========================================================
     //  Sheet drag-to-dismiss — a short tug downward closes it

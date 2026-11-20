@@ -33,7 +33,6 @@ html, body {
 
 /* Custom scrollbar — thin, dark, low-contrast; matches the site. */
 html {
-    scrollbar-gutter: stable;                /* reserve the gutter permanently — no layout jump */
     scrollbar-width: thin;                 /* Firefox */
     scrollbar-color: rgba(255, 255, 255, 0.9) transparent;  /* white by default (Firefox has no hover state) */
 }
@@ -121,12 +120,12 @@ button {
     transition: opacity 0.28s ease;
 }
 
-/* Плеер mode: the header floats, feathered over the edge-to-edge video */
+/* Плеер mode: the header floats bare over the edge-to-edge video — no background, like TikTok */
 body.mode-player.video-active .app-header {
     position: fixed;
     left: 0;
     right: 0;
-    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0) 100%);
+    background: transparent;
     backdrop-filter: none;
     border-bottom: none;
 }
@@ -173,16 +172,19 @@ body.mode-tiktok .header-left {
 }
 
 .header-left {
+    grid-column: 1;
     justify-self: start;
-    gap: 4px;
+    gap: 12px; /* hamburger ↔ logo: even, optical rhythm like the real YouTube */
 }
 
 .header-center {
+    grid-column: 2;
     justify-self: center;
     justify-content: center;
 }
 
 .header-right {
+    grid-column: 3;
     justify-self: end;
     justify-content: flex-end;
     gap: 12px;
@@ -581,7 +583,7 @@ body.mode-tiktok .welcome-screen {
     margin: 0 auto;
     padding: 16px 24px 56px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 400px;
+    grid-template-columns: minmax(0, 1fr) 440px;
     gap: 24px;
     align-items: start;
 }
@@ -599,9 +601,21 @@ body.mode-tiktok .welcome-screen {
    everything else stays exactly where it is (same column, same sizes). */
 body.theater-mode.mode-youtube .yt-grid {
     max-width: none;
-    grid-template-columns: minmax(0, 1fr) 400px;
-    padding: 0 24px 56px;
+    grid-template-columns: minmax(0, 1fr) 440px;
+    padding: 0 0 56px; /* full-bleed player — exactly like YouTube's theater mode */
     gap: 24px;
+}
+
+body.theater-mode.mode-youtube .yt-info {
+    padding: 12px 0 0 24px;
+}
+
+body.theater-mode.mode-youtube .yt-comments {
+    padding-left: 24px;
+}
+
+body.theater-mode.mode-youtube .yt-sidebar {
+    padding: 12px 24px 0 0;
 }
 
 body.theater-mode.mode-youtube .player-column {
@@ -800,43 +814,6 @@ body.mode-tiktok .player-wrapper {
 
 @keyframes spin {
     to { transform: rotate(360deg); }
-}
-
-.center-flash {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%) scale(0.6);
-    z-index: 22;
-    pointer-events: none;
-    opacity: 0;
-    width: 88px;
-    height: 88px;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.65);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.center-flash i {
-    color: #fff;
-    font-size: 2rem;
-    line-height: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 56px;
-    height: 56px;
-}
-
-.center-flash.show {
-    animation: centerFlash 0.5s ease forwards;
-}
-
-@keyframes centerFlash {
-    0%   { opacity: 0.9; transform: translate(-50%, -50%) scale(0.6); }
-    100% { opacity: 0;   transform: translate(-50%, -50%) scale(1.45); }
 }
 
 .replay-overlay {
@@ -2050,7 +2027,7 @@ input:checked + .slider-toggle:before {
 }
 
 .yt-action.toggled i {
-    color: var(--accent-blue);
+    color: #fff; /* YouTube fills the active like/dislike/bookmark icon solid white */
 }
 
 /* Description box */
@@ -2225,7 +2202,7 @@ input:checked + .slider-toggle:before {
 }
 
 .yt-comment-action.active {
-    color: #3ea6ff;
+    color: #ffffff; /* pressed like/dislike: filled icon, white — like the real YouTube */
 }
 
 .yt-comment-like-count {
@@ -2233,12 +2210,15 @@ input:checked + .slider-toggle:before {
 }
 
 .yt-comment-creator i {
-    color: #3ea6ff;
-    font-size: 0.78rem;
+    font-size: 0.82rem;
+}
+
+.yt-comment-creator.active {
+    color: #ff3d5a; /* author's like — a red-pink heart when on */
 }
 
 .yt-comment-creator.active i {
-    color: #3ea6ff;
+    color: #ff3d5a;
 }
 
 .yt-comment-reply-btn {
@@ -2246,27 +2226,85 @@ input:checked + .slider-toggle:before {
     padding: 0 12px;
 }
 
-.yt-comment-delete {
+.yt-comment-more {
+    position: relative;
+    flex-shrink: 0;
+    align-self: flex-start;
+    margin-top: 1px;
+}
+
+.yt-comment-more-btn {
     background: transparent;
     border: none;
     color: var(--text-secondary);
     cursor: pointer;
-    font-size: 0.85rem;
-    width: 30px;
-    height: 30px;
+    font-size: 0.95rem;
+    width: 34px;
+    height: 34px;
     border-radius: 50%;
     opacity: 0;
     transition: opacity 0.15s, background 0.15s;
-    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.yt-comment:hover .yt-comment-delete {
+.yt-comment:hover .yt-comment-more-btn,
+.yt-comment-more-btn[aria-expanded="true"] {
     opacity: 1;
 }
 
-.yt-comment-delete:hover {
+@media (hover: none) {
+    .yt-comment-more-btn {
+        opacity: 1;
+    }
+}
+
+.yt-comment-more-btn:hover {
     background: rgba(255, 255, 255, 0.12);
     color: #fff;
+}
+
+.yt-comment-menu {
+    position: absolute;
+    top: 36px;
+    right: 0;
+    z-index: 40;
+    min-width: 172px;
+    background: #282828;
+    border-radius: 12px;
+    padding: 6px;
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.55);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.yt-comment-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 9px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: #f1f1f1;
+    font-size: 0.88rem;
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.yt-comment-menu-item:hover {
+    background: rgba(255, 255, 255, 0.09);
+}
+
+.yt-comment-menu-item i {
+    font-size: 0.92rem;
+    color: #d5d5d5;
+    width: 18px;
+    text-align: center;
 }
 
 .yt-comment-empty {
@@ -2319,7 +2357,7 @@ input:checked + .slider-toggle:before {
 
 .suggest-thumb {
     position: relative;
-    width: 200px;
+    width: 226px;
     height: auto;
     aspect-ratio: 16 / 9;
     border-radius: 12px;
@@ -3352,6 +3390,11 @@ body.mode-tiktok .tk-drawer {
 
 body.mode-tiktok .tk-backdrop {
     display: block;
+}
+
+/* Stats-for-nerds panel never shows in TikTok mode */
+body.mode-tiktok .stats-overlay {
+    display: none !important;
 }
 
 /* TikTok empty state for the comments drawer */
