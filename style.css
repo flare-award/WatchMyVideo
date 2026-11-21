@@ -1570,7 +1570,7 @@ body.studio-light .ambient-canvas {
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65);
     z-index: 40;
     overflow: hidden;
-    animation: menuFadeIn 0.16s ease;
+    animation: menuFadeIn 0.22s cubic-bezier(0.25, 0.8, 0.3, 1);
 }
 
 .settings-menu[data-view="settings-main"] { width: 352px; }
@@ -1586,7 +1586,7 @@ body.studio-light .ambient-canvas {
 }
 
 @keyframes menuFadeIn {
-    from { opacity: 0; transform: translateY(10px); }
+    from { opacity: 0; transform: translateY(24px); }
     to   { opacity: 1; transform: translateY(0); }
 }
 
@@ -1594,23 +1594,24 @@ body.studio-light .ambient-canvas {
     padding: 8px 0;
 }
 
-/* Sub-view navigation: forward slides in from the right, back — from the left */
+/* Sub-view navigation: sections rise from below (forward — a full rise,
+   back — a shorter settle), never sideways */
 @keyframes settingsSlideFwd {
-    from { opacity: 0; transform: translateX(18px); }
-    to   { opacity: 1; transform: translateX(0); }
+    from { opacity: 0; transform: translateY(18px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes settingsSlideBack {
-    from { opacity: 0; transform: translateX(-18px); }
-    to   { opacity: 1; transform: translateX(0); }
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 .settings-view.anim-fwd {
-    animation: settingsSlideFwd 0.18s ease;
+    animation: settingsSlideFwd 0.2s cubic-bezier(0.25, 0.8, 0.3, 1);
 }
 
 .settings-view.anim-back {
-    animation: settingsSlideBack 0.18s ease;
+    animation: settingsSlideBack 0.2s cubic-bezier(0.25, 0.8, 0.3, 1);
 }
 
 .settings-item {
