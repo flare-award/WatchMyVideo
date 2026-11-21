@@ -1616,19 +1616,19 @@ body.studio-light .ambient-canvas {
 }
 
 .settings-view.is-leaving-to-left {
-    animation: settingsLeaveToLeft 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+    animation: settingsLeaveToLeft 0.28s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 .settings-view.is-leaving-to-right {
-    animation: settingsLeaveToRight 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+    animation: settingsLeaveToRight 0.28s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 .settings-view.is-entering-from-right {
-    animation: settingsEnterFromRight 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+    animation: settingsEnterFromRight 0.28s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 .settings-view.is-entering-from-left {
-    animation: settingsEnterFromLeft 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+    animation: settingsEnterFromLeft 0.28s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 @keyframes settingsLeaveToLeft {
