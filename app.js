@@ -4355,10 +4355,10 @@ void main() {
         settingsMenu.setAttribute('data-view', viewElement.id || 'settings-main');
 
         // Keep both pages visible together during the turn. Entering a section
-        // travels left-to-right; returning to the main list travels right-to-left.
+        // travels right-to-left; returning to the main list travels left-to-right.
         settingsMenu.classList.add('settings-transitioning');
-        currentView.classList.add(isBack ? 'is-leaving-to-left' : 'is-leaving-to-right');
-        viewElement.classList.add(isBack ? 'is-entering-from-right' : 'is-entering-from-left');
+        currentView.classList.add(isBack ? 'is-leaving-to-right' : 'is-leaving-to-left');
+        viewElement.classList.add(isBack ? 'is-entering-from-left' : 'is-entering-from-right');
         void settingsMenu.offsetWidth;
         settingsMenu.classList.add('morphing');
         requestAnimationFrame(() => {
