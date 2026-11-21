@@ -4313,50 +4313,65 @@ void main() {
 
     function switchSettingsView(viewElement) {
         if (!viewElement) return;
-        const views = settingsMenu.querySelectorAll('.settings-view');
-        const currentView = [...views].find((v) => !v.classList.contains('hidden'));
-        const showTarget = () => {
+        const views = [...settingsMenu.querySelectorAll('.settings-view')];
+        const currentView = views.find((v) => !v.classList.contains('hidden'));
+        const resetViews = (activeView) => {
             views.forEach((v) => {
                 v.classList.add('hidden');
-                v.classList.remove('anim-fwd', 'anim-back');
+                v.classList.remove('is-entering-from-right', 'is-entering-from-left', 'is-leaving-to-left', 'is-leaving-to-right');
+                v.style.animation = '';
             });
-            viewElement.classList.remove('hidden');
-            // Forward into a sub-view slides from the right, back — from the left
-            viewElement.classList.add(viewElement === settingsMain ? 'anim-back' : 'anim-fwd');
-            settingsMenu.setAttribute('data-view', viewElement.id || 'settings-main');
+            activeView.classList.remove('hidden');
+            settingsMenu.classList.remove('settings-transitioning');
+            settingsMenu.setAttribute('data-view', activeView.id || 'settings-main');
         };
-        if (!currentView || currentView === viewElement || settingsMenu.classList.contains('hidden') || settingsMenu.classList.contains('as-sheet')) {
-            showTarget();
+        const canAnimate = currentView && currentView !== viewElement &&
+            !settingsMenu.classList.contains('hidden') && !settingsMenu.classList.contains('as-sheet');
+        clearTimeout(settingsMorphTimer);
+        if (!canAnimate) {
+            resetViews(viewElement);
             settingsMenu.classList.remove('morphing');
             settingsMenu.style.width = '';
             settingsMenu.style.height = '';
             return;
         }
-        clearTimeout(settingsMorphTimer);
+
+        const isBack = viewElement === settingsMain;
         const startWidth = settingsMenu.offsetWidth;
         const startHeight = settingsMenu.offsetHeight;
-        settingsMenu.style.width = startWidth + 'px';
-        settingsMenu.style.height = startHeight + 'px';
-        showTarget();
         const maxWidth = Math.max(260, ((playerWrapper && playerWrapper.clientWidth) || window.innerWidth) - 32);
         const targetWidth = Math.min(SETTINGS_VIEW_WIDTHS[viewElement.id] || startWidth, maxWidth);
+
+        // Measure the incoming page at its final width before either page is animated.
+        // All changes are synchronous, so no intermediate measurement state is painted.
+        currentView.classList.add('hidden');
+        viewElement.classList.remove('hidden');
         settingsMenu.style.width = targetWidth + 'px';
         settingsMenu.style.height = 'auto';
-        const targetHeight = settingsMenu.offsetHeight;
+        const targetHeight = viewElement.offsetHeight;
+        currentView.classList.remove('hidden');
         settingsMenu.style.width = startWidth + 'px';
         settingsMenu.style.height = startHeight + 'px';
-        void settingsMenu.offsetWidth; // lock the start box BEFORE transition is enabled
-        settingsMenu.classList.add('morphing');
+        settingsMenu.setAttribute('data-view', viewElement.id || 'settings-main');
+
+        // Keep both pages visible together during the turn. Entering a section
+        // travels left-to-right; returning to the main list travels right-to-left.
+        settingsMenu.classList.add('settings-transitioning');
+        currentView.classList.add(isBack ? 'is-leaving-to-left' : 'is-leaving-to-right');
+        viewElement.classList.add(isBack ? 'is-entering-from-right' : 'is-entering-from-left');
         void settingsMenu.offsetWidth;
+        settingsMenu.classList.add('morphing');
         requestAnimationFrame(() => {
             settingsMenu.style.width = targetWidth + 'px';
             settingsMenu.style.height = targetHeight + 'px';
         });
+
         settingsMorphTimer = window.setTimeout(() => {
+            resetViews(viewElement);
             settingsMenu.classList.remove('morphing');
             settingsMenu.style.width = '';
             settingsMenu.style.height = '';
-        }, 360);
+        }, 390);
     }
 
     settingsMenu.querySelectorAll('.settings-item[data-action]').forEach((item) => {

@@ -1594,24 +1594,61 @@ body.studio-light .ambient-canvas {
     padding: 8px 0;
 }
 
-/* Sub-view navigation: sections rise from below (forward — a full rise,
-   back — a shorter settle), never sideways */
-@keyframes settingsSlideFwd {
-    from { opacity: 0; transform: translateY(18px); }
-    to   { opacity: 1; transform: translateY(0); }
+/* Sub-view navigation: both pages remain visible and move together
+   horizontally, like a continuous page turn. */
+.settings-menu.settings-transitioning .settings-view {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    box-sizing: border-box;
 }
 
-@keyframes settingsSlideBack {
-    from { opacity: 0; transform: translateY(10px); }
-    to   { opacity: 1; transform: translateY(0); }
+.settings-menu.settings-transitioning .settings-view.is-leaving-to-left,
+.settings-menu.settings-transitioning .settings-view.is-leaving-to-right {
+    z-index: 1;
+    pointer-events: none;
 }
 
-.settings-view.anim-fwd {
-    animation: settingsSlideFwd 0.2s cubic-bezier(0.25, 0.8, 0.3, 1);
+.settings-menu.settings-transitioning .settings-view.is-entering-from-right,
+.settings-menu.settings-transitioning .settings-view.is-entering-from-left {
+    z-index: 2;
 }
 
-.settings-view.anim-back {
-    animation: settingsSlideBack 0.2s cubic-bezier(0.25, 0.8, 0.3, 1);
+.settings-view.is-leaving-to-left {
+    animation: settingsLeaveToLeft 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.settings-view.is-leaving-to-right {
+    animation: settingsLeaveToRight 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.settings-view.is-entering-from-right {
+    animation: settingsEnterFromRight 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.settings-view.is-entering-from-left {
+    animation: settingsEnterFromLeft 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes settingsLeaveToLeft {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-100%); }
+}
+
+@keyframes settingsLeaveToRight {
+    from { transform: translateX(0); }
+    to   { transform: translateX(100%); }
+}
+
+@keyframes settingsEnterFromRight {
+    from { transform: translateX(100%); }
+    to   { transform: translateX(0); }
+}
+
+@keyframes settingsEnterFromLeft {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(0); }
 }
 
 .settings-item {
