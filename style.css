@@ -1,4 +1,9 @@
-/* CSS Reset & Variables */
+/* ============================================================
+   WatchMyVideo — YouTube & TikTok local player
+   Themes: body.mode-youtube | body.mode-player | body.mode-tiktok
+   ============================================================ */
+
+/* Reset & tokens */
 * {
     margin: 0;
     padding: 0;
@@ -9,79 +14,427 @@
 :root {
     --bg-color: #0f0f0f;
     --surface-color: #212121;
+    --surface-2: #272727;
     --surface-hover: #383838;
     --text-color: #ffffff;
     --text-secondary: #aaa;
     --accent-color: #ff0000;
     --accent-hover: #cc0000;
-    --slider-bg: rgba(255, 255, 255, 0.2);
-    --slider-played: #ff0000;
-    --overlay-gradient: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.5) 50%, transparent 100%);
+    --accent-blue: #3ea6ff;
+    --overlay-gradient: linear-gradient(to top, rgba(0,0,0,0.52) 0%, rgba(0,0,0,0.20) 55%, transparent 100%);
+    --header-height: 56px;
+    --content-max: 1720px;
 }
 
-body.dark-theme {
+html, body {
     background-color: var(--bg-color);
     color: var(--text-color);
+}
+
+/* Custom scrollbar — thin, dark, low-contrast; matches the site. */
+html {
+    scrollbar-width: thin;                 /* Firefox */
+    scrollbar-color: rgba(255, 255, 255, 0.9) transparent;  /* white by default (Firefox has no hover state) */
+}
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.9);   /* white by default */
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+    background: rgba(144, 144, 144, 0.95);   /* gray only while hovered or dragged */
+    background-clip: padding-box;
+    border: 2px solid transparent;
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+body {
     min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    overflow-x: hidden;
 }
 
 .hidden {
     display: none !important;
 }
 
-/* App Layout */
+.hidden-video {
+    position: fixed;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    top: -10px;
+    left: -10px;
+}
+
+button:focus-visible,
+label:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+button {
+    font-family: inherit;
+}
+
+/* ============================================================
+   App container & header (YouTube mode)
+   ============================================================ */
 .app-container {
     display: flex;
     flex-direction: column;
-    height: 100vh;
-    width: 100vw;
+    min-height: 100vh;
 }
 
 .app-header {
+    position: sticky;
+    top: 0;
+    z-index: 80;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    height: var(--header-height);
+    padding: 0 16px;
+    background-color: rgba(15, 15, 15, 0.96);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    transition: opacity 0.28s ease;
+}
+
+/* Плеер mode: the header floats bare over the edge-to-edge video — no background, like TikTok */
+body.mode-player.video-active .app-header {
+    position: fixed;
+    left: 0;
+    right: 0;
+    background: transparent;
+    backdrop-filter: none;
+    border-bottom: none;
+}
+
+body.header-idle.mode-player.video-active .app-header {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* TikTok mode: the header has NO background at all — floating bare icons */
+body.mode-tiktok .app-header {
+    position: fixed;
+    left: 0;
+    right: 0;
+    background: transparent;
+    backdrop-filter: none;
+    border-bottom: none;
+}
+
+body.idle.mode-tiktok .app-header {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.28s ease;
+}
+
+/* The search box belongs to YouTube mode only */
+body.mode-player .header-center,
+body.mode-tiktok .header-center {
+    display: none;
+}
+
+/* Logo & site name live only in the YouTube style. In player/TikTok the logo
+   block is hidden visually, but keeps its layout slot, so the search box and
+   the right-hand buttons never shift by a pixel */
+body.mode-player .header-left,
+body.mode-tiktok .header-left {
+    visibility: hidden;
+}
+
+.header-left, .header-center, .header-right {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 12px 24px;
-    background-color: var(--surface-color);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    z-index: 100;
-    height: 60px;
+    min-width: 0;
+}
+
+.header-left {
+    grid-column: 1;
+    justify-self: start;
+    gap: 12px; /* hamburger ↔ logo: even, optical rhythm like the real YouTube */
+}
+
+.header-center {
+    grid-column: 2;
+    justify-self: center;
+    justify-content: center;
+}
+
+.header-right {
+    grid-column: 3;
+    justify-self: end;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+/* Visual-only hamburger — deliberately inert: no tooltip, no click action */
+.hamburger-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: none;
+    background: transparent;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 1.1rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    pointer-events: auto;
+}
+
+.hamburger-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.hamburger-btn:focus {
+    outline: none;
 }
 
 .logo {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 1.25rem;
-    font-weight: 700;
-    letter-spacing: -0.5px;
+    gap: 4px;
+    line-height: 1;
+    user-select: none;
 }
 
-.logo i {
-    font-size: 1.5rem;
-}
-
-.header-actions {
+/* Search box */
+.search-box {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 12px;
+    width: clamp(260px, 36vw, 600px);
 }
 
-/* Buttons */
-.btn {
+#search-input {
+    width: 100%;
+    height: 40px;
+    padding: 0 44px 0 16px;
+    border-radius: 20px 0 0 20px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-right: none;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-color);
+    font-size: 0.95rem;
+    transition: border-color 0.2s;
+}
+
+#search-input::placeholder {
+    color: #888;
+}
+
+#search-input:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.search-btn {
+    height: 40px;
+    width: 64px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: var(--surface-2);
+    color: #fff;
+    border-radius: 0 20px 20px 0;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background 0.15s;
+}
+
+.search-btn:hover {
+    background: var(--surface-hover);
+}
+
+.search-clear {
+    position: absolute;
+    right: 72px;
+    background: transparent;
+    border: none;
+    color: #ddd;
+    font-size: 1.05rem;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.search-clear:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+/* Mode pill — shared by header & ambient bar */
+.mode-pill {
+    display: inline-flex;
+    align-items: center;
+    background: var(--surface-2);
+    border: none;
+    border-radius: 20px;
+    padding: 4px;
+    gap: 2px;
+}
+
+.mode-pill-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 32px;
+    padding: 0 13px;
+    border: none;
+    border-radius: 16px;
+    background: transparent;
+    color: #ddd;
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 500;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+    line-height: 1;
+}
+
+.mode-pill-btn i {
+    font-size: 0.95rem;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    transform: translateY(1px);
+}
+
+.mode-pill-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.mode-pill-btn.active {
+    background: #3d3d3d;
+    color: #fff;
+}
+
+.mode-pill-btn[data-mode="youtube"].active {
+    background: var(--accent-color);
+    color: #fff;
+}
+
+.mode-pill-btn[data-mode="tiktok"].active {
+    background: #fff;
+    color: #0f0f0f;
+}
+
+/* Logo lockup */
+.logo-mark {
+    display: block;
+    flex-shrink: 0;
+}
+
+.logo-text {
+    font-size: 1.12rem;
+    font-weight: 800;
+    letter-spacing: -0.8px;
+    color: #fff;
+}
+
+/* Shared "Открыть" pill — same look in both chromes */
+.open-pill {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 16px;
-    border-radius: 20px;
+    height: 36px;
+    padding: 0 15px;
+    border-radius: 18px;
+    background: var(--surface-2);
+    color: #fff;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: background 0.15s;
+    white-space: nowrap;
+    text-decoration: none;
+    border: none;
+}
+
+.open-pill:hover {
+    background: var(--surface-hover);
+}
+
+.open-pill i {
+    font-size: 0.92rem;
+    line-height: 1;
+    transform: translateY(1px);
+}
+
+/* Close-video button that lives next to "Открыть" (top bar) */
+.close-video-top {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 50%;
+    background: var(--surface-2);
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+
+.close-video-top:hover {
+    background: var(--surface-hover);
+    color: #fff;
+}
+
+.close-video-top:active {
+    transform: scale(0.92);
+}
+
+body.video-active .close-video-top {
+    display: inline-flex;
+}
+
+
+/* ============================================================
+   Buttons
+   ============================================================ */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
     border: none;
     cursor: pointer;
-    font-size: 0.9rem;
     font-weight: 500;
+    line-height: 1;
     transition: background 0.2s, transform 0.1s;
+    color: #fff;
+    white-space: nowrap;
+    text-decoration: none;
 }
 
 .btn:active {
@@ -89,84 +442,92 @@ body.dark-theme {
 }
 
 .btn-primary {
-    background-color: var(--accent-color);
-    color: white;
+    background: var(--accent-color);
+    border-radius: 24px;
+    padding: 10px 22px;
+    font-size: 0.95rem;
 }
 
 .btn-primary:hover {
-    background-color: var(--accent-hover);
+    background: var(--accent-hover);
 }
 
-.btn-secondary {
-    background-color: rgba(255, 255, 255, 0.1);
-    color: white;
-}
-
-.btn-secondary:hover {
-    background-color: rgba(255, 255, 255, 0.2);
-}
-
-.btn-accent {
-    background-color: #3ea6ff;
-    color: #0f0f0f;
+.btn-big {
+    padding: 14px 30px;
+    font-size: 1.05rem;
     font-weight: 600;
 }
 
+.btn-ghost {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 24px;
+    padding: 10px 20px;
+    font-size: 0.9rem;
+}
+
+.btn-ghost:hover {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.btn-accent {
+    background: var(--accent-blue);
+    color: #0f0f0f;
+    font-weight: 600;
+    border-radius: 6px;
+}
+
 .btn-accent:hover {
-    background-color: #65b8ff;
-}
-
-.btn-icon {
-    background: transparent;
-    color: white;
-    font-size: 1.1rem;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.btn-icon:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background: #65b8ff;
 }
 
 .btn-sm {
-    padding: 4px 10px;
+    padding: 6px 12px;
     font-size: 0.8rem;
-    border-radius: 4px;
+    border-radius: 6px;
 }
 
-/* Main Content & Welcome Screen */
+/* ============================================================
+   Main content & welcome screen
+   ============================================================ */
 .main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--bg-color);
+}
+
+.welcome-screen {
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    position: relative;
-    background-color: #000;
-    overflow: hidden;
+    padding: 32px 20px;
+    min-height: calc(100vh - var(--header-height));
 }
 
-.welcome-screen {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    padding: 20px;
+body.mode-player .welcome-screen {
+    min-height: 100vh;
+    background: #000;
+}
+
+body.mode-tiktok .welcome-screen {
+    min-height: 100vh;
+    background: #000;
+    /* keep the hero clear of the floating transparent header */
+    padding-top: calc(var(--header-height) + 16px);
+    box-sizing: border-box;
 }
 
 .dropzone {
-    border: 3px dashed rgba(255, 255, 255, 0.2);
-    border-radius: 16px;
-    padding: 60px 40px;
+    border: 2px dashed rgba(255, 255, 255, 0.22);
+    border-radius: 20px;
+    padding: 48px 44px;
     text-align: center;
-    max-width: 600px;
+    max-width: 620px;
     width: 100%;
-    background-color: var(--surface-color);
-    transition: border-color 0.3s, background-color 0.3s;
+    background: var(--surface-color);
+    transition: border-color 0.25s, background-color 0.25s, transform 0.25s;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -175,68 +536,264 @@ body.dark-theme {
 
 .dropzone.dragover {
     border-color: var(--accent-color);
-    background-color: rgba(255, 0, 0, 0.05);
+    background-color: rgba(255, 0, 0, 0.07);
+    transform: scale(1.015);
 }
 
-.drop-icon {
-    font-size: 4rem;
-    color: var(--text-secondary);
-    margin-bottom: 10px;
+.drop-logo {
+    filter: drop-shadow(0 6px 24px rgba(255, 0, 0, 0.35));
 }
 
-.dropzone h2 {
-    font-size: 1.5rem;
-    font-weight: 500;
+.dropzone h1 {
+    font-size: 1.6rem;
+    font-weight: 600;
+    letter-spacing: -0.3px;
 }
 
 .dropzone p {
     color: var(--text-secondary);
     font-size: 0.95rem;
+    max-width: 420px;
+    line-height: 1.45;
 }
 
 .supported-formats {
     display: flex;
     gap: 8px;
-    margin-top: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 4px;
 }
 
 .supported-formats span {
-    background: rgba(255, 255, 255, 0.1);
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 0.75rem;
+    background: rgba(255, 255, 255, 0.08);
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 0.74rem;
     color: var(--text-secondary);
+    letter-spacing: 0.3px;
 }
 
-/* ==========================================
-   PLAYER WRAPPER & CUSTOM CONTROLS OVERLAY
-   ========================================== */
+/* ============================================================
+   YouTube page grid (YouTube mode)
+   ============================================================ */
+.yt-grid {
+    width: 100%;
+    max-width: var(--content-max);
+    margin: 0 auto;
+    padding: 16px 24px 56px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 440px;
+    gap: 24px;
+    align-items: start;
+}
+
+.player-column {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: relative;
+    z-index: 1;
+}
+
+/* Theater mode on the real YouTube page: player spans both columns,
+   everything else stays exactly where it is (same column, same sizes). */
+body.theater-mode.mode-youtube .yt-grid {
+    max-width: none;
+    grid-template-columns: minmax(0, 1fr) 440px;
+    padding: 0 0 56px; /* full-bleed player — exactly like YouTube's theater mode */
+    gap: 6px 24px; /* tight row gap: title sits right under the player */
+}
+
+body.theater-mode.mode-youtube .yt-info {
+    padding: 8px 0 0 24px;
+}
+
+body.theater-mode.mode-youtube .yt-comments {
+    padding-left: 24px;
+}
+
+body.theater-mode.mode-youtube .yt-sidebar {
+    padding: 8px 24px 0 0;
+}
+
+body.theater-mode.mode-youtube .player-column {
+    display: contents;
+}
+
+body.theater-mode.mode-youtube .player-wrapper {
+    grid-column: 1 / -1;
+}
+
+body.theater-mode .yt-info {
+    padding: 12px 0 0;
+    max-width: none;
+    margin: 0;
+    width: 100%;
+}
+
+body.theater-mode .yt-sidebar {
+    padding: 12px 0 0;
+    max-width: none;
+    margin: 0;
+    width: 100%;
+}
+
+/* ============================================================
+   Player wrapper — geometry per mode
+   ============================================================ */
 .player-wrapper {
     position: relative;
-    width: 100%;
-    height: 100%;
+    background: #000;
+    overflow: hidden;
+    user-select: none;
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: #000;
-    overflow: hidden;
-    user-select: none;
 }
 
-.player-wrapper.theater-mode {
-    max-width: 100% !important;
-    max-height: 85vh !important;
-    height: 85vh !important;
+/* YouTube mode: the box follows the video's aspect ratio (falling back to
+   16:9), so the picture is never letterboxed awkwardly or squeezed —
+   it grows as tall as the viewport allows. */
+body.mode-youtube .player-wrapper {
+    width: min(100%, calc((100vh - var(--header-height) - 32px) * var(--video-ar-num, 1.7778)));
+    aspect-ratio: var(--video-ar, 16 / 9);
+    border-radius: 14px;
+    margin: 0 auto;
+    max-width: 100%;
+}
+
+/* YouTube theater: full width, height = 100vh − masthead − metadata strip,
+   video letterboxed & centered inside the black pane (≈ YouTube's 100vh − 169px) */
+body.theater-mode.mode-youtube .player-wrapper {
+    width: 100%;
+    aspect-ratio: auto;
+    height: calc(100vh - var(--header-height) - 112px);
+    min-height: 240px;
+    max-height: none;
+    border-radius: 0;
+}
+
+/* Плеер mode: full-viewport edge-to-edge */
+body.mode-player {
+    overflow: hidden;
+}
+
+body.mode-player .app-container {
+    height: 100vh;
+    height: 100dvh;
+}
+
+body.mode-player .main-content {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Reset the YouTube grid so it does not add padding/max-width that would
+   offset an edge-to-edge player (that was pushing the frame to the right
+   and off-screen on zoom). */
+body.mode-player .app-shell,
+body.mode-player .yt-grid,
+body.mode-player .player-column {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+}
+
+body.mode-player .player-wrapper {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+}
+
+/* TikTok mode: vertical 9:16 frame centered on black */
+body.mode-tiktok {
+    overflow: hidden;
+}
+
+body.mode-tiktok .app-container {
+    height: 100vh;
+}
+
+/* TikTok mode: bare floating header, video area fills everything behind it */
+body.mode-tiktok .main-content {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+body.mode-tiktok .app-shell,
+body.mode-tiktok .yt-grid,
+body.mode-tiktok .player-column {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    width: 100%;
+}
+
+body.mode-tiktok .player-wrapper {
+    height: 100%;
+    /* TikTok's signature phone frame — always 9:16 */
+    aspect-ratio: 9 / 16;
+    width: auto;
+    max-width: 100vw;
+    border-radius: 0;
+    box-shadow: 0 0 80px rgba(0, 0, 0, 1);
+}
+
+/* Narrow/portrait: fill the width instead, keep the 9:16 shape */
+@media (max-aspect-ratio: 9/16) {
+    body.mode-tiktok .player-wrapper {
+        width: 100vw;
+        height: auto;
+        aspect-ratio: 9 / 16;
+    }
 }
 
 #video-element {
+    position: relative;
+    z-index: 1; /* above the ambient glow canvas (z-index 0), below quality-canvas (5) */
     width: 100%;
     height: 100%;
     object-fit: contain;
     display: block;
+    background: #000;
 }
 
-/* Loading Spinner */
+/* Fullscreen: always edge-to-edge, no rounding, any mode */
+.player-wrapper:fullscreen,
+.player-wrapper:-webkit-full-screen {
+    width: 100% !important;
+    height: 100% !important;
+    aspect-ratio: auto !important;
+    border-radius: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+}
+
+/* ============================================================
+   Loading spinner / center flash / replay / skip indicator
+   ============================================================ */
 .loading-spinner {
     position: absolute;
     top: 50%;
@@ -247,9 +804,9 @@ body.dark-theme {
 }
 
 .spinner {
-    width: 50px;
-    height: 50px;
-    border: 4px solid rgba(255, 255, 255, 0.3);
+    width: 54px;
+    height: 54px;
+    border: 4px solid rgba(255, 255, 255, 0.25);
     border-top-color: var(--accent-color);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
@@ -259,7 +816,110 @@ body.dark-theme {
     to { transform: rotate(360deg); }
 }
 
-/* Double Tap / Keypress Animation Indicator */
+.replay-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 24;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    cursor: pointer;
+}
+
+.replay-button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    background: rgba(28, 28, 28, 0.92);
+    color: #fff;
+    padding: 20px 32px;
+    border-radius: 14px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    border: none;
+    transition: background 0.2s, transform 0.15s;
+}
+
+.replay-button:hover {
+    background: rgba(50, 50, 50, 0.95);
+    transform: scale(1.04);
+}
+
+.replay-button i {
+    font-size: 2.1rem;
+    color: #fff;
+    line-height: 1;
+}
+
+.center-flash {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.6);
+    z-index: 23;
+    pointer-events: none;
+    opacity: 0;
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.center-flash i {
+    color: #fff;
+    font-size: 2rem;
+    line-height: 1;
+}
+
+.center-flash .fa-play {
+    padding-left: 6px; /* optical centering of the play triangle */
+}
+
+.center-flash.show {
+    animation: centerFlash 0.5s ease forwards;
+}
+
+@keyframes centerFlash {
+    0%   { opacity: 0.9; transform: translate(-50%, -50%) scale(0.6); }
+    100% { opacity: 0;   transform: translate(-50%, -50%) scale(1.4); }
+}
+
+body.mode-tiktok .center-flash {
+    display: none;
+}
+
+/* TikTok ended state: bare repeat glyph, no backplate, no label */
+body.mode-tiktok .replay-overlay {
+    background: #000;
+}
+
+body.mode-tiktok .replay-button {
+    background: transparent;
+    padding: 0;
+    gap: 0;
+    border-radius: 0;
+}
+
+body.mode-tiktok .replay-button:hover {
+    background: transparent;
+    transform: none;
+}
+
+body.mode-tiktok .replay-button i {
+    font-size: 3rem;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+body.mode-tiktok .replay-button span {
+    display: none;
+}
+
 .double-tap-indicator {
     position: absolute;
     top: 50%;
@@ -268,7 +928,7 @@ body.dark-theme {
     z-index: 25;
     pointer-events: none;
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.25s ease;
 }
 
 .double-tap-indicator.show {
@@ -276,150 +936,112 @@ body.dark-theme {
 }
 
 .tap-animation {
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.75);
     padding: 12px 24px;
     border-radius: 30px;
     display: flex;
     align-items: center;
-    gap: 8px;
-    color: white;
+    gap: 10px;
+    color: #fff;
     font-weight: 600;
-    font-size: 1.1rem;
+    font-size: 1.05rem;
     backdrop-filter: blur(4px);
-    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    line-height: 1;
 }
 
-/* Subtitle Overlay */
+/* Subtitles */
 .subtitle-overlay {
     position: absolute;
-    bottom: 80px;
+    bottom: 74px;
     left: 50%;
     transform: translateX(-50%);
-    width: 80%;
+    width: 84%;
     text-align: center;
     z-index: 15;
     pointer-events: none;
-    font-size: 1.5rem;
+    font-size: 1.3rem;
     font-weight: 600;
     color: #fff;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.9), -2px -2px 4px rgba(0,0,0,0.9), 0px 0px 8px rgba(0,0,0,0.8);
-    line-height: 1.3;
-    padding: 0 20px;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.9), -2px -2px 4px rgba(0,0,0,0.9), 0 0 10px rgba(0,0,0,0.85);
+    line-height: 1.35;
+    white-space: pre-line;
 }
 
-/* TikTok Style Sidebar */
-.tiktok-sidebar {
-    position: absolute;
-    right: 20px;
-    bottom: 100px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-    z-index: 25;
-    transition: opacity 0.3s;
+.subtitle-overlay:empty {
+    display: none;
 }
 
-.tiktok-action-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    cursor: pointer;
-    color: white;
-    font-size: 1.5rem;
-    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.8));
-    transition: transform 0.2s;
-}
-
-.tiktok-action-btn:hover {
-    transform: scale(1.1);
-}
-
-.tiktok-action-btn .count {
-    font-size: 0.8rem;
-    font-weight: 600;
-}
-
-.tiktok-sound-disk {
-    width: 45px;
-    height: 45px;
-    border-radius: 50%;
-    background: #222;
-    border: 3px solid #333;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 1.1rem;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.6);
-}
-
-/* TikTok Mode Layout Adjustments */
-.player-wrapper.tiktok-style .custom-controls-overlay {
-    right: 80px;
-    left: 20px;
-    bottom: 20px;
-    width: auto;
-    background: transparent;
-    padding: 0;
-}
-
-.player-wrapper.tiktok-style .controls-row {
-    background: rgba(0,0,0,0.4);
-    border-radius: 12px;
-    padding: 8px 12px;
-    backdrop-filter: blur(6px);
-}
-
-.player-wrapper.tiktok-style .progress-container {
-    margin-bottom: 8px;
-}
-
-/* Custom Controls Overlay */
+/* ============================================================
+   Custom controls overlay
+   ============================================================ */
 .custom-controls-overlay {
     position: absolute;
     bottom: 0;
     left: 0;
     right: 0;
     background: var(--overlay-gradient);
-    padding: 20px 16px 12px 16px;
+    padding: 26px 16px 12px;
     display: flex;
     flex-direction: column;
     z-index: 30;
     opacity: 1;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.25s ease;
 }
 
-.player-wrapper.hide-controls .custom-controls-overlay {
+body.idle .custom-controls-overlay {
     opacity: 0;
     pointer-events: none;
 }
 
-.player-wrapper.hide-controls {
+body.idle .player-wrapper {
     cursor: none;
 }
 
-.player-wrapper.hide-controls .custom-controls-overlay,
-.player-wrapper.hide-controls .tiktok-sidebar {
-    opacity: 0;
-    pointer-events: none;
-}
-
-/* Progress Bar */
+/* Progress bar */
 .progress-container {
     position: relative;
-    height: 5px;
+    height: 4px;
     width: 100%;
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.072);
     cursor: pointer;
-    margin-bottom: 10px;
-    border-radius: 3px;
-    transition: height 0.15s ease;
+    margin-bottom: 9px;
+    border-radius: 2px;
+    transition: height 0.12s ease;
+    touch-action: none;
 }
 
-.progress-container:hover {
-    height: 8px;
+/* Invisible hit area — the bar is easy to grab even from slightly above it */
+.progress-container::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -9px;
+    bottom: -7px;
+}
+
+.progress-container:hover,
+.progress-container.scrubbing {
+    height: 6px;
+}
+
+/* Brighter segment between the playhead and the hover cursor — slightly lighter than the grey track */
+.progress-hover {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 0;
+    background: rgba(255, 255, 255, 0.38);
+    border-radius: 3px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+
+.progress-hover.visible {
+    opacity: 1;
 }
 
 .progress-buffered {
@@ -427,7 +1049,8 @@ body.dark-theme {
     top: 0;
     left: 0;
     height: 100%;
-    background: rgba(255, 255, 255, 0.4);
+    width: 0;
+    background: rgba(255, 255, 255, 0.45);
     border-radius: 3px;
     pointer-events: none;
 }
@@ -437,6 +1060,7 @@ body.dark-theme {
     top: 0;
     left: 0;
     height: 100%;
+    width: 0;
     background: var(--accent-color);
     border-radius: 3px;
     pointer-events: none;
@@ -445,212 +1069,636 @@ body.dark-theme {
 .progress-scrubber {
     position: absolute;
     top: 50%;
-    left: 0%;
+    left: 0;
     transform: translate(-50%, -50%);
     width: 13px;
     height: 13px;
     background: var(--accent-color);
     border-radius: 50%;
-    opacity: 0;
     transition: opacity 0.15s;
     pointer-events: none;
-    box-shadow: 0 0 4px rgba(0,0,0,0.8);
-}
-
-.progress-container:hover .progress-scrubber {
-    opacity: 1;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
 }
 
 .progress-tooltip {
     position: absolute;
-    bottom: 18px;
+    bottom: 12px;
     transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.85);
-    color: white;
-    padding: 3px 6px;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 500;
+    background: transparent;
+    color: #fff;
+    padding: 0;
+    border: none;
+    font-size: 0.78rem;
+    font-weight: 400;
     pointer-events: none;
     display: none;
     white-space: nowrap;
-    border: 1px solid rgba(255,255,255,0.2);
+    z-index: 7;
+    font-variant-numeric: tabular-nums;
+    /* only a faint, very blurred halo — the time text "floats" over the picture */
+    text-shadow: 0 0 7px rgba(0, 0, 0, 0.16), 0 0 3px rgba(0, 0, 0, 0.18), 0 1px 6px rgba(0, 0, 0, 0.14);
 }
 
-/* Controls Row */
+/* Mini-frame preview shown above the scrubber time while seeking */
+.seek-preview {
+    position: absolute;
+    bottom: 40px;
+    transform: translateX(-50%);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+    z-index: 6;
+    line-height: 0;
+}
+
+.seek-preview canvas {
+    display: block;
+    height: 100px;
+    width: auto; /* aspect comes from the backing store, set per frame */
+}
+
+/* YouTube-style tooltip for the control buttons — dark translucent
+   backplate, no border, normal weight, never pops out of the player */
+.custom-controls-overlay [data-tooltip] {
+    position: relative;
+}
+
+.custom-controls-overlay [data-tooltip]:hover::after,
+.custom-controls-overlay [data-tooltip]:focus-visible::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    /* same Y band as the scrubber time tooltip (measured: button top −> progress bar top) */
+    bottom: calc(100% + 23px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 400;
+    line-height: 1.3;
+    padding: 5px 9px;
+    border-radius: 4px;
+    border: none;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 60;
+    animation: tooltipIn 0.14s ease;
+}
+
+@keyframes tooltipIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+/* Controls row */
+/* Every bottom-row button & the time readout cast the same faint halo —
+   enough to float above bright frames, never enough to shout */
+.controls-row .control-btn,
+.controls-row .autoplay-btn,
+.controls-row .loop-btn,
+.controls-row .boost-btn {
+    filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.32));
+}
+
+.controls-row .control-btn i,
+.controls-row .autoplay-btn i,
+.controls-row .loop-btn i,
+.controls-row .boost-btn i,
+.controls-row .autoplay-pill i,
+.controls-row .autoplay-pill svg {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.38);
+}
+
+.time-display,
+.time-display .time-separator {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.42);
+}
+
+/* YouTube action row: icons and labels share one optical centre line */
+.yt-action i,
+.yt-action span {
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+}
+
+/* Player subtitles button when no track is loaded — visibly inert, never dead-clickable */
+.control-btn.subtitles-unavailable {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* Settings: «Загрузить» sits as the bottom-most subtitles item */
+.subtitle-upload {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: flex-start;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    margin-top: 2px;
+    padding-top: 10px;
+    color: #fff;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+}
+
 .controls-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
 }
 
 .controls-left, .controls-right {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
+    min-width: 0;
 }
 
 .control-btn {
+    position: relative;
     background: transparent;
     border: none;
-    color: white;
+    color: #fff;
     font-size: 1.1rem;
     cursor: pointer;
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
+    padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 50%;
     transition: background 0.2s, transform 0.1s;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.control-btn i {
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transform: translateY(1px);
+    /* Fixed-size icon box: swapping fa-play/fa-pause (and other glyphs)
+       must never change the layout or nudge neighbouring icons. */
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
 }
 
 .control-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
+    background: transparent;
 }
 
 .control-btn:active {
-    transform: scale(0.95);
+    transform: scale(0.93);
 }
 
-/* Volume Slider */
+.control-btn.active {
+    background: transparent;
+}
+
+
+
 .volume-container {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
 }
 
-.volume-slider-wrapper {
-    width: 0;
-    overflow: hidden;
-    transition: width 0.2s ease;
-    display: flex;
-    align-items: center;
-}
-
-.volume-container:hover .volume-slider-wrapper {
-    width: 70px;
-}
-
-#volume-slider {
-    width: 70px;
-    accent-color: var(--accent-color);
-    cursor: pointer;
+#volume-slider,
+#tk-volume-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 78px;
     height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(to right, #ffffff 0 var(--fill, 50%), rgba(255, 255, 255, 0.28) var(--fill, 50%) 100%);
+    cursor: pointer;
+    outline: none;
 }
 
-/* Volume Boost Button */
+#volume-slider::-webkit-slider-thumb,
+#tk-volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: none;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    cursor: pointer;
+}
+
+#volume-slider::-moz-range-thumb,
+#tk-volume-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: none;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    cursor: pointer;
+}
+
+#volume-slider::-moz-range-track,
+#tk-volume-slider::-moz-range-track {
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.28);
+}
+
+#volume-slider::-moz-range-progress,
+#tk-volume-slider::-moz-range-progress {
+    height: 4px;
+    border-radius: 2px;
+    background: #ffffff;
+}
+
 .boost-btn {
-    width: auto !important;
-    padding: 0 8px;
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.1);
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    flex-shrink: 0;
+    color: #fff;
 }
 
 .boost-btn.active {
-    background: var(--accent-color);
-    border-color: var(--accent-color);
-    box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+    color: #ffd60a;
+    background: rgba(255, 214, 10, 0.14);
+}
+
+/* Repeat button — toggles looping, active state like YouTube */
+.loop-btn.active {
+    color: var(--accent-color);
+    background: rgba(255, 255, 255, 0.14);
 }
 
 .time-display {
-    font-size: 0.85rem;
+    font-size: 0.84rem;
     color: #e1e1e1;
     font-weight: 500;
-    margin-left: 4px;
+    margin-left: 2px;
     white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 
+/* Gear badge — current quality tier sits on the gear, like YouTube's HD/4K */
+.settings-quality-badge {
+    position: absolute;
+    top: 1px;
+    right: 0;
+    min-width: 18px;
+    padding: 1px 3px;
+    border-radius: 3px;
+    background: var(--accent-color);
+    color: #fff;
+    font-size: 0.52rem;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    line-height: 1.35;
+    text-align: center;
+    pointer-events: none;
+    border: none;
+}
+
+/* Autoplay toggle — mini switch like YouTube, lives left of Субтитры */
+.autoplay-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 38px;
+    padding: 0 6px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+
+.autoplay-btn:hover {
+    background: transparent;
+}
+
+/*
+   Three identical gray stops, like one continuous gray line with a knob on it:
+     off → gray knob (left)  with a white pause glyph
+     on  → white knob (right) with a black play glyph
+   The track stays gray in both states.
+*/
+.autoplay-pill {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+    background: #5a5a5a;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+}
+
+.autoplay-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #8f8f8f;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.autoplay-thumb i {
+    line-height: 1;
+    color: #fff;
+}
+
+/* Pause — medium glyph (between the old hand-drawn miniature and the
+   oversized first FA attempt); play — back to its original size.
+   Both are flex-centred by the thumb itself, not absolutely placed. */
+.autoplay-thumb .autoplay-icon-off {
+    font-size: 0.64rem;
+}
+
+.autoplay-thumb .autoplay-icon-on {
+    font-size: 0.58rem;
+    transform: translateX(1px); /* optical centering of the play triangle */
+}
+
+.autoplay-icon-on {
+    display: none;
+}
+
+.autoplay-btn[aria-pressed="true"] .autoplay-thumb {
+    transform: translateX(18px);
+    background: #fff;
+}
+
+.autoplay-btn[aria-pressed="true"] .autoplay-icon-off {
+    display: none;
+}
+
+.autoplay-btn[aria-pressed="true"] .autoplay-icon-on {
+    display: block;
+    color: #0f0f0f;
+}
+
+/* Audio files — centered square cover on black, like YouTube Music */
+.audio-cover {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(56vh, 62vw, 380px);
+    aspect-ratio: 1 / 1;
+    height: auto;
+    border-radius: 12px;
+    object-fit: cover;
+    background: #111;
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.8);
+    z-index: 6;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+    -webkit-touch-callout: none;
+}
+
+.player-wrapper.audio-mode #video-element {
+    opacity: 0; /* invisible, but still fills the frame and receives clicks — the black backdrop toggles play */
+}
+
+.player-wrapper.audio-mode .quality-canvas,
+.player-wrapper.audio-mode .seek-preview {
+    display: none !important;
+}
+
+.player-wrapper {
+    z-index: 1;
+}
+
+/* Профессиональное освещение — YouTube-style ambient halo: the glow spills
+   out from behind the player onto the page around it */
+.ambient-halo {
+    position: absolute; /* JS positions it around the player wrapper */
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0;
+    filter: blur(68px) saturate(1.12) brightness(0.44);
+    -webkit-mask-image: radial-gradient(ellipse at center, #000 33%, transparent 72%);
+    mask-image: radial-gradient(ellipse at center, #000 33%, transparent 72%);
+    transition: opacity 0.5s ease;
+}
+
+body.studio-light .ambient-halo {
+    opacity: 1;
+}
+
+body.ambient-off .ambient-halo,
+body.ambient-off .ambient-canvas {
+    opacity: 0 !important;
+}
+
+/* YouTube theater stretches the player across everything — hide the halo there */
+body.theater-mode .ambient-halo {
+    display: none;
+}
+
+/* Ambient («Профессиональное освещение»): a blurred cover-fit painting of the
+   video fills the letterbox area inside the player — exactly YouTube's trick */
+.ambient-canvas {
+    position: absolute;
+    inset: -12%;
+    width: 124%;
+    height: 124%;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0;
+    filter: blur(44px) saturate(1.2) brightness(0.82);
+    transition: opacity 0.45s ease;
+}
+
+body.studio-light .ambient-canvas {
+    opacity: 1;
+}
+
+
+/* Settings gear — rotates open/closed */
+#settings-gear-icon {
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#settings-gear-icon.gear-open {
+    transform: rotate(72deg);
+}
+
+/* CC indicator — red underline inside the button, YouTube-style */
 .cc-indicator {
     position: absolute;
-    bottom: 6px;
-    right: 6px;
-    width: 6px;
-    height: 6px;
+    bottom: 3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 18px;
+    height: 3px;
+    border-radius: 2px;
     background: var(--accent-color);
-    border-radius: 50%;
     display: none;
+    pointer-events: none;
 }
 
 .cc-indicator.active {
     display: block;
 }
 
-/* Settings Popup Menu */
+/* ============================================================
+   Settings menu (YouTube-style popover)
+   ============================================================ */
 .settings-menu {
     position: absolute;
-    bottom: 70px;
-    right: 20px;
-    background: rgba(28, 28, 28, 0.95);
+    bottom: 68px;
+    right: 16px;
+    background: rgba(28, 28, 28, 0.97);
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: none;
     border-radius: 12px;
-    width: 280px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    width: 352px;
+    max-width: calc(100% - 32px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65);
     z-index: 40;
     overflow: hidden;
-    animation: menuFadeIn 0.15s ease;
+    animation: menuFadeIn 0.22s cubic-bezier(0.25, 0.8, 0.3, 1);
+}
+
+.settings-menu[data-view="settings-main"] { width: 352px; }
+.settings-menu[data-view="settings-speed"] { width: 384px; }
+.settings-menu[data-view="settings-quality"] { width: 320px; }
+.settings-menu[data-view="settings-subtitles-menu"] { width: 304px; }
+.settings-menu[data-view="settings-sleep"] { width: 304px; }
+
+/* Section switch = the box itself deforms smoothly to the new size */
+.settings-menu.morphing {
+    transition: width 0.32s cubic-bezier(0.25, 0.8, 0.3, 1), height 0.32s cubic-bezier(0.25, 0.8, 0.3, 1);
+    will-change: width, height;
 }
 
 @keyframes menuFadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 .settings-view {
     padding: 8px 0;
 }
 
-.settings-view.hidden {
-    display: none;
+/* Sub-view navigation: both pages remain visible and move together
+   horizontally, like a continuous page turn. */
+.settings-menu.settings-transitioning .settings-view {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.settings-menu.settings-transitioning .settings-view.is-leaving-to-left,
+.settings-menu.settings-transitioning .settings-view.is-leaving-to-right {
+    z-index: 1;
+    pointer-events: none;
+}
+
+.settings-menu.settings-transitioning .settings-view.is-entering-from-right,
+.settings-menu.settings-transitioning .settings-view.is-entering-from-left {
+    z-index: 2;
+}
+
+.settings-view.is-leaving-to-left {
+    animation: settingsLeaveToLeft 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.settings-view.is-leaving-to-right {
+    animation: settingsLeaveToRight 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.settings-view.is-entering-from-right {
+    animation: settingsEnterFromRight 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.settings-view.is-entering-from-left {
+    animation: settingsEnterFromLeft 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes settingsLeaveToLeft {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-100%); }
+}
+
+@keyframes settingsLeaveToRight {
+    from { transform: translateX(0); }
+    to   { transform: translateX(100%); }
+}
+
+@keyframes settingsEnterFromRight {
+    from { transform: translateX(100%); }
+    to   { transform: translateX(0); }
+}
+
+@keyframes settingsEnterFromLeft {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(0); }
 }
 
 .settings-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
+    gap: 10px;
+    padding: 10px 14px;
     cursor: pointer;
-    font-size: 0.9rem;
-    color: white;
+    font-size: 0.88rem;
+    color: #fff;
     transition: background 0.15s;
+    line-height: 1.25;
+    user-select: none;
 }
 
-.settings-item:hover {
+.settings-item:hover,
+.settings-item:focus-visible {
     background: rgba(255, 255, 255, 0.1);
 }
 
-.settings-item .setting-label {
+.setting-label {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
+    min-width: 0;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
-.settings-item .setting-label i {
-    width: 16px;
+.setting-label i {
+    width: 18px;
+    flex-shrink: 0;
     text-align: center;
     color: var(--text-secondary);
+    line-height: 1;
 }
 
-.settings-item .setting-value {
+.setting-value {
     color: var(--text-secondary);
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     display: flex;
     align-items: center;
     gap: 6px;
+    white-space: nowrap;
+    max-width: 55%;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.settings-divider {
-    height: 1px;
-    background: rgba(255, 255, 255, 0.1);
-    margin: 6px 0;
-}
-
-/* Toggle Switch */
 .toggle-item {
     cursor: default;
 }
@@ -664,6 +1712,7 @@ body.dark-theme {
     display: inline-block;
     width: 36px;
     height: 20px;
+    flex-shrink: 0;
 }
 
 .switch input {
@@ -675,9 +1724,9 @@ body.dark-theme {
 .slider-toggle {
     position: absolute;
     cursor: pointer;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background-color: rgba(255, 255, 255, 0.2);
-    transition: .3s;
+    inset: 0;
+    background-color: rgba(255, 255, 255, 0.28);
+    transition: 0.25s;
     border-radius: 20px;
 }
 
@@ -688,8 +1737,8 @@ body.dark-theme {
     width: 14px;
     left: 3px;
     bottom: 3px;
-    background-color: white;
-    transition: .3s;
+    background-color: #fff;
+    transition: 0.25s;
     border-radius: 50%;
 }
 
@@ -701,92 +1750,2224 @@ input:checked + .slider-toggle:before {
     transform: translateX(16px);
 }
 
-/* Settings Submenus */
 .settings-submenu-header {
     padding: 8px 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
     margin-bottom: 6px;
 }
 
 .back-btn {
     background: transparent;
     border: none;
-    color: white;
-    font-size: 0.9rem;
+    color: #fff;
+    font-size: 0.92rem;
     font-weight: 500;
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 4px;
+    gap: 14px;
+    padding: 6px 4px;
+    line-height: 1.2;
+    border-radius: 6px;
+    min-height: 32px;
+}
+
+.back-btn i {
+    font-size: 1.05rem;
+    width: 18px;
+    text-align: center;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.back-btn span {
+    line-height: 1.2;
 }
 
 .back-btn:hover {
-    color: var(--accent-color);
+    color: var(--accent-blue);
 }
 
 .settings-options {
-    max-height: 240px;
+    max-height: 264px;
     overflow-y: auto;
 }
 
 .settings-option {
-    padding: 10px 16px;
+    position: relative;
+    padding: 10px 16px 10px 46px;
     cursor: pointer;
     font-size: 0.9rem;
-    color: white;
+    color: #fff;
     transition: background 0.15s;
+    line-height: 1.3;
+    user-select: none;
+    border: none;
+    background: transparent;
+    width: 100%;
+    text-align: left;
+    display: block;
 }
 
-.settings-option:hover {
+.settings-option:hover,
+.settings-option:focus-visible {
     background: rgba(255, 255, 255, 0.1);
 }
 
 .settings-option.active {
-    color: var(--accent-color);
+    font-weight: 500;
+}
+
+.settings-option.active::before {
+    content: "\f00c";
+    font-family: "Font Awesome 7 Free", "Font Awesome 6 Free";
+    font-weight: 900;
+    position: absolute;
+    left: 21px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.55rem;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.settings-option.inert {
+    cursor: default;
+    color: var(--text-secondary);
+}
+
+/* Speed submenu — YouTube-style slider (0.25x–2x, 0.05 steps) + preset pills */
+.speed-slider-block {
+    padding: 6px 16px 14px;
+}
+
+.speed-value-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 2px 0 14px;
+}
+
+.speed-value-big {
+    font-size: 1.6rem;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    font-variant-numeric: tabular-nums;
+    color: #fff;
+    text-align: center;
+    min-width: 4.2em;
+}
+
+.speed-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.speed-step-btn {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 auto;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font-size: 0.72rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.speed-step-btn:hover {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+.speed-step-btn:active {
+    transform: scale(0.9);
+}
+
+#speed-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    min-width: 0;
+    height: 4px;
+    border-radius: 999px;
+    background: linear-gradient(
+        to right,
+        #ffffff 0%,
+        #ffffff var(--fill, 42.9%),
+        rgba(255, 255, 255, 0.22) var(--fill, 42.9%),
+        rgba(255, 255, 255, 0.22) 100%
+    );
+    outline: none;
+    cursor: pointer;
+    transition: height 0.12s ease;
+}
+
+#speed-slider:hover {
+    height: 6px;
+}
+
+#speed-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 15px;
+    height: 15px;
+    border: none;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+    transition: transform 0.15s ease;
+}
+
+#speed-slider:hover::-webkit-slider-thumb,
+#speed-slider:focus-visible::-webkit-slider-thumb {
+    transform: scale(1.35);
+}
+
+#speed-slider::-moz-range-thumb {
+    width: 15px;
+    height: 15px;
+    border: none;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+}
+
+#speed-slider::-moz-range-track {
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.22);
+}
+
+#speed-slider::-moz-range-progress {
+    height: 4px;
+    border-radius: 999px;
+    background: #ffffff;
+}
+
+#speed-slider:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 4px;
+}
+
+.speed-presets {
+    display: flex;
+    gap: 4px;
+    flex-wrap: nowrap;              /* single row, like YouTube */
+    margin-top: 12px;
+    justify-content: space-between;
+}
+
+.speed-pill {
+    border: none;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #e1e1e1;
+    padding: 7px 2px;
+    flex: 1 1 0;
+    font-size: 0.72rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    white-space: nowrap;
+}
+
+.speed-pill:hover {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.speed-pill.active {
+    /* Intentionally plain — the pill is a click-to-set button, never a highlighted chip */
+    background: rgba(255, 255, 255, 0.1);
+    color: #e1e1e1;
+    font-weight: 500;
+}
+
+/* ============================================================
+   YouTube info section (title, channel, actions, description, comments)
+   ============================================================ */
+.yt-info {
+    padding: 14px 2px 0;
+}
+
+.yt-title {
+    font-size: 1.28rem;
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: -0.2px;
+    overflow-wrap: anywhere;
+}
+
+.yt-action-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+
+.yt-channel {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.yt-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ff0000 0%, #cc0000 100%);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.yt-avatar-me {
+    background: linear-gradient(135deg, #065fd4 0%, #3ea6ff 100%);
+    font-size: 1rem;
+}
+
+.yt-channel-meta {
+    min-width: 0;
+}
+
+.yt-channel-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.yt-channel-sub {
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.yt-sub-wrap {
+    position: relative;
+    margin-left: 10px;
+    flex-shrink: 0;
+}
+
+.yt-sub-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    line-height: 1;
+    height: 36px;
+    padding: 0 16px;
+    border: none;
+    border-radius: 18px;
+    background: #f1f1f1;
+    color: #0f0f0f;
+    cursor: pointer;
+    font-size: 0.86rem;
+    font-weight: 600;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+
+.yt-sub-btn:hover {
+    background: #d9d9d9;
+}
+
+.yt-sub-btn.subscribed {
+    background: var(--surface-2);
+    color: #fff;
+}
+
+.yt-sub-btn.subscribed:hover {
+    background: var(--surface-hover);
+}
+
+.yt-sub-btn .yt-sub-chevron {
+    font-size: 0.68rem;
+}
+
+/* Notification menu — styled after the subscribe button itself */
+.yt-sub-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    min-width: 264px;
+    background: var(--surface-2);
+    border-radius: 14px;
+    padding: 6px;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+    z-index: 80;
+    animation: menuFadeIn 0.16s ease;
+}
+
+.yt-sub-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 9px 10px;
+    border: none;
+    background: transparent;
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 400;
+    line-height: 1.25;
+    border-radius: 9px;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.yt-sub-menu-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.yt-sub-menu-item > i {
+    width: 20px;
+    text-align: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.yt-sub-menu-item .ring-bell {
+    width: 20px;
+    display: inline-flex;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.yt-sub-menu-check {
+    margin-left: auto;
+    width: auto !important;
+    font-size: 0.78rem !important;
+    visibility: hidden;
+}
+
+.yt-sub-menu-item.selected .yt-sub-menu-check {
+    visibility: visible;
+}
+
+.yt-sub-menu-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.12);
+    margin: 6px 4px;
+}
+
+/* Ringing-bell flourish: two sound arcs over the regular bell glyph */
+.ring-bell {
+    position: relative;
+}
+
+.ring-bell::before,
+.ring-bell::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    width: 7px;
+    height: 7px;
+    border: 1.5px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.ring-bell::before {
+    left: 0;
+    transform: rotate(-42deg);
+}
+
+.ring-bell::after {
+    right: 0;
+    transform: rotate(42deg);
+}
+
+/* Unsubscribe confirmation dialog */
+.unsub-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 400;
+    padding: 16px;
+}
+
+.unsub-modal {
+    background: #212121;
+    border-radius: 16px;
+    width: min(420px, calc(100vw - 48px));
+    padding: 24px 24px 18px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+    animation: unsubModalIn 0.16s ease;
+}
+
+@keyframes unsubModalIn {
+    from { opacity: 0; transform: scale(0.96); }
+    to   { opacity: 1; transform: scale(1); }
+}
+
+.unsub-modal-title {
+    margin: 0;
+    text-align: center;
+    color: #a8a8a8;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.45;
+}
+
+.unsub-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+    margin-top: 26px;
+}
+
+.unsub-btn {
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 400;
+    line-height: 1;
+    padding: 10px 14px;
+    border-radius: 18px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.unsub-btn-cancel {
+    color: #fff;
+}
+
+.unsub-btn-cancel:hover {
+    background: rgba(255, 255, 255, 0.09);
+}
+
+.unsub-btn-confirm {
+    color: #3EA6FF;
+}
+
+.unsub-btn-confirm:hover {
+    background: rgba(62, 166, 255, 0.13);
+}
+
+.yt-sub-btn.subscribed:hover {
+    background: var(--surface-hover);
+}
+
+.yt-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.yt-like-group {
+    display: inline-flex;
+    align-items: stretch;
+    background: var(--surface-2);
+    border-radius: 18px;
+    overflow: hidden;
+}
+
+.yt-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 14px;
+    border: none;
+    background: var(--surface-2);
+    color: #fff;
+    border-radius: 18px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+
+.yt-action:hover {
+    background: var(--surface-hover);
+}
+
+.yt-action i {
+    line-height: 1;
+}
+
+.yt-action-grouped {
+    border-radius: 0;
+    background: transparent;
+}
+
+.yt-action-divider {
+    border-left: 1px solid rgba(255, 255, 255, 0.18);
+    padding: 0 16px;
+}
+
+.yt-action.toggled {
+    background: var(--surface-hover);
+}
+
+.yt-action.toggled i {
+    color: #fff; /* YouTube fills the active like/dislike/bookmark icon solid white */
+}
+
+/* Description box */
+.yt-description {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: var(--surface-2);
+    color: #f1f1f1;
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-top: 12px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    transition: background 0.15s;
+}
+
+.yt-description:hover {
+    background: var(--surface-hover);
+}
+
+.yt-desc-stat {
     font-weight: 600;
 }
 
-.settings-custom-speed {
-    padding: 10px 16px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+.yt-desc-gap {
+    display: inline-block;
+    width: 0.38em;
+}
+
+.yt-desc-size {
+    font-weight: 600;
+    color: #8a8a8a;
+}
+
+.yt-description-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: pre-line;
+}
+
+.yt-description[aria-expanded="true"] .yt-description-text {
+    -webkit-line-clamp: unset;
+    display: block;
+}
+
+.yt-description-more {
+    display: block;
+    font-weight: 700;
     margin-top: 4px;
 }
 
-.settings-custom-speed label {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    display: block;
-    margin-bottom: 6px;
+/* Comments */
+.yt-comments {
+    margin-top: 22px;
 }
 
-.custom-speed-input-group {
+.yt-comments-title {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 14px;
+}
+
+.yt-comment-form {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.yt-comment-form input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    color: #fff;
+    padding: 8px 2px;
+    font-size: 0.95rem;
+}
+
+.yt-comment-form input:focus {
+    outline: none;
+    border-bottom-color: #fff;
+}
+
+.yt-comment-send {
+    width: 38px;
+    height: 38px;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    color: #0f0f0f;
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: filter 0.15s;
+    flex-shrink: 0;
+}
+
+.yt-comment-send:hover {
+    filter: brightness(1.15);
+}
+
+.yt-comment-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.yt-comment {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.yt-comment-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #065fd4 0%, #3ea6ff 100%);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.yt-comment-body {
+    min-width: 0;
+    flex: 1;
+}
+
+.yt-comment-meta {
+    font-size: 0.76rem;
+    color: var(--text-secondary);
     display: flex;
     gap: 8px;
+    align-items: baseline;
 }
 
-.custom-speed-input-group input {
-    flex: 1;
+.yt-comment-name {
+    color: #f1f1f1;
+    font-weight: 600;
+}
+
+.yt-comment-text {
+    font-size: 0.9rem;
+    line-height: 1.45;
+    margin-top: 3px;
+    overflow-wrap: anywhere;
+    white-space: pre-line;
+}
+
+.yt-comment-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-top: 6px;
+}
+
+.yt-comment-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: none;
+    color: #e8e8e8;
+    cursor: pointer;
+    font-size: 0.78rem;
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 16px;
+    transition: background 0.15s, color 0.15s;
+}
+
+.yt-comment-action:hover {
     background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+
+.yt-comment-action.active {
+    color: #ffffff; /* pressed like/dislike: filled icon, white — like the real YouTube */
+}
+
+.yt-comment-like-count {
+    font-variant-numeric: tabular-nums;
+}
+
+.yt-comment-creator i {
+    font-size: 0.82rem;
+}
+
+.yt-comment-creator.active {
+    color: #ff3d5a; /* author's like — a red-pink heart when on */
+}
+
+.yt-comment-creator.active i {
+    color: #ff3d5a;
+}
+
+.yt-comment-reply-btn {
+    font-weight: 500;
+    padding: 0 12px;
+}
+
+.yt-comment-more {
+    position: relative;
+    flex-shrink: 0;
+    align-self: flex-start;
+    margin-top: 1px;
+}
+
+.yt-comment-more-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.95rem;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.yt-comment:hover .yt-comment-more-btn,
+.yt-comment-more-btn[aria-expanded="true"] {
+    opacity: 1;
+}
+
+@media (hover: none) {
+    .yt-comment-more-btn {
+        opacity: 1;
+    }
+}
+
+.yt-comment-more-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.yt-comment-menu {
+    position: absolute;
+    top: 36px;
+    right: 0;
+    z-index: 40;
+    min-width: 172px;
+    background: #282828;
+    border-radius: 12px;
+    padding: 6px;
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.55);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.yt-comment-menu[hidden] {
+    display: none; /* author display:flex above beats the UA [hidden] rule — restore it */
+}
+
+.yt-comment-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 9px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: #f1f1f1;
+    font-size: 0.88rem;
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.yt-comment-menu-item:hover {
+    background: rgba(255, 255, 255, 0.09);
+}
+
+.yt-comment-menu-item i {
+    font-size: 0.92rem;
+    color: #d5d5d5;
+    width: 18px;
+    text-align: center;
+}
+
+.yt-comment-empty {
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    padding: 6px 0;
+}
+
+/* ============================================================
+   YouTube sidebar — suggestions feed
+   ============================================================ */
+.yt-sidebar {
+    min-width: 0;
+}
+
+.yt-sidebar-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin: 6px 2px 12px;
+}
+
+.suggest-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.suggest-item {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+    background: transparent;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 14px;
+    padding: 6px;
+    color: #fff;
+    transition: background 0.15s;
+}
+
+.suggest-item:hover {
+    background: var(--surface-2);
+}
+
+.suggest-item.active {
+    background: var(--surface-2);
+    outline: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.suggest-thumb {
+    position: relative;
+    width: 226px;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    border-radius: 12px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, hsl(var(--hue, 0), 55%, 32%), hsl(var(--hue, 0), 55%, 14%));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.suggest-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* Music covers keep their whole square artwork — pure black bars on the sides */
+.suggest-thumb.is-audio {
+    background: #000;
+}
+
+.suggest-thumb.is-audio img {
+    object-fit: contain;
+    background: #000;
+}
+
+.suggest-thumb-icon {
+    font-size: 1.6rem;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.suggest-duration {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+    background: rgba(0, 0, 0, 0.85);
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 600;
     border-radius: 4px;
-    color: white;
-    padding: 4px 8px;
+    padding: 2px 5px;
+    font-variant-numeric: tabular-nums;
+}
+
+.suggest-meta {
+    min-width: 0;
+    padding: 2px 2px 2px 0;
+}
+
+.suggest-title {
+    font-size: 0.97rem;
+    font-weight: 600;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+}
+
+.suggest-sub {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 5px;
+    line-height: 1.4;
+}
+
+.suggest-empty {
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    padding: 24px 8px;
+    text-align: center;
+    line-height: 1.5;
+}
+
+
+.tk-rail {
+    position: absolute;
+    right: 8px;
+    bottom: 12px;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    z-index: 26;
+    pointer-events: auto;
+    transition: opacity 0.25s ease;
+}
+
+.tk-action {
+    width: 52px;
+    min-height: 52px;
+    justify-content: center;
+}
+
+.tk-avatar-wrap {
+    position: relative;
+    margin-bottom: 4px;
+}
+
+.tk-avatar {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ff0050, #00f2ea);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    font-weight: 800;
+    user-select: none;
+}
+
+.tk-follow {
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 23px;
+    height: 23px;
+    border-radius: 50%;
+    border: none;
+    background: #ff0050;
+    color: #fff;
+    font-size: 0.75rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, opacity 0.18s ease, transform 0.18s ease;
+}
+
+.tk-follow.follow-hidden {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.55);
+    pointer-events: none;
+}
+
+.tk-follow.subscribed {
+    background: #25f4ee;
+    color: #0f0f0f;
+}
+
+.tk-action {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    /* no drop-shadow here — shadows stay a YouTube/Player-style accent */
+}
+
+.tk-action:hover {
+    transform: none;
+}
+
+.tk-action i {
+    font-size: 1.85rem;
+    line-height: 1;
+}
+
+.tk-count {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+}
+
+.tk-action.toggled i {
+    color: #ff0050;
+}
+
+.tk-action.saved i {
+    color: #ffd600;
+}
+
+.tk-info {
+    position: absolute;
+    left: 12px;
+    right: 76px;
+    bottom: 26px;
+    color: #fff;
+    z-index: 26;
+    display: none;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: 3px;
+    min-width: 0;
+    pointer-events: auto;
+    transition: opacity 0.25s ease;
+}
+
+.tk-author {
+    font-size: 1.0rem;
+    font-weight: 700;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.tk-desc {
+    font-size: 0.84rem;
+    line-height: 1.4;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    min-width: 0;
+}
+
+/* Static record disc pinned under the rail — TikTok-style, never spinning */
+.tk-disc {
+    position: static;
+    z-index: auto;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.25s ease;
+    background:
+        radial-gradient(circle at center, #2b2b2b 0 26%, #111 27% 44%, #1d1d1d 45% 52%, #000 53% 100%);
+    border: 2px solid rgba(255, 255, 255, 0.25);
+    color: #fff;
+    font-size: 0.82rem;
+    flex-shrink: 0;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8));
+}
+
+/* Share-style settings sheet (TikTok) — circle actions in a horizontal row */
+.tk-sheet-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 44;
+    background: rgba(0, 0, 0, 0.62);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+.tk-sheet-backdrop.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.tk-share-sheet {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 45;
+    background: #141414;
+    border-radius: 18px 18px 0 0;
+    padding: 10px 0 calc(12px + env(safe-area-inset-bottom));
+    transform: translateY(105%);
+    transition: transform 0.3s cubic-bezier(0.32, 0.72, 0.25, 1);
+    box-shadow: 0 -12px 44px rgba(0, 0, 0, 0.65);
+    display: flex;
+    flex-direction: column;
+}
+
+.tk-share-sheet.open {
+    transform: translateY(0);
+}
+
+.tk-sheet-handle {
+    position: relative;
+    width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.32);
+    margin: 2px auto 6px;
+    flex-shrink: 0;
+    cursor: grab;
+    touch-action: none;
+}
+
+.tk-sheet-row {
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+    padding: 6px 10px 10px;
+    scrollbar-width: none;
+    justify-content: space-evenly;
+}
+
+.tk-sheet-row::-webkit-scrollbar {
+    display: none;
+}
+
+.tk-sheet-item {
+    flex: 0 0 auto;
+    width: 62px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    border: none;
+    border-radius: 14px;
+    color: #fff;
+    padding: 6px 2px 8px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.tk-sheet-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.tk-sheet-circle {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.18rem;
+    color: #fff;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.tk-sheet-item:hover .tk-sheet-circle {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.tk-sheet-item.active .tk-sheet-circle {
+    background: var(--accent-color);
+    border-color: transparent;
+    color: #fff;
+}
+
+.tk-sheet-label {
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.88);
+    line-height: 1.25;
+    text-align: center;
+}
+
+.tk-sheet-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.12);
+    margin: 0 16px 10px;
+    flex-shrink: 0;
+}
+
+.tk-sheet-volume {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 18px 4px;
+}
+
+.tk-sheet-volume i {
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.95rem;
+    width: 18px;
+    text-align: center;
+}
+
+.tk-sheet-volume input {
+    flex: 1;
+    width: auto;
+}
+
+.tk-sheet-volume-value {
+    width: 42px;
+    text-align: right;
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.7);
+    font-variant-numeric: tabular-nums;
+}
+
+/* While the sheet is open, keep the rail/info out of the way */
+.player-wrapper.tk-sheet-open .tk-rail,
+.player-wrapper.tk-sheet-open .tk-info {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Idle: fade TikTok chrome like the real app */
+body.idle .tk-rail,
+body.idle .tk-info {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Comments drawer */
+.tk-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s;
+    z-index: 44;
+}
+
+.tk-drawer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: min(68%, 560px);
+    background: #161616;
+    border-radius: 16px 16px 0 0;
+    z-index: 46;
+    display: flex;
+    flex-direction: column;
+    transform: translateY(103%);
+    transition: transform 0.3s cubic-bezier(0.32, 0.72, 0.35, 1);
+    pointer-events: auto;
+    box-shadow: 0 -12px 44px rgba(0, 0, 0, 0.6);
+}
+
+body.tk-drawer-open .tk-drawer {
+    transform: translateY(0);
+}
+
+body.tk-drawer-open .tk-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.tk-drawer-handle {
+    position: relative;
+    width: 38px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.28);
+    margin: 12px auto 4px;
+    flex-shrink: 0;
+    cursor: grab;
+    touch-action: none;
+}
+
+.tk-drawer-handle::after,
+.tk-sheet-handle::after {
+    content: "";
+    position: absolute;
+    left: -36px;
+    right: -36px;
+    top: -10px;
+    bottom: -10px;
+}
+
+.tk-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 2px 12px 10px;
+    border-bottom: none;
+    flex-shrink: 0;
+}
+
+.tk-drawer-close {
+    margin-left: auto;
+}
+
+.tk-drawer-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    margin: 0; /* left-aligned title — the close ✕ is absolutely positioned */
+}
+
+.tk-drawer-title b {
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+}
+
+.tk-drawer-close {
+    position: absolute;
+    right: 6px;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 1.05rem;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.tk-drawer-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.tk-drawer-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.tk-drawer-form {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: #161616;
+    flex-shrink: 0;
+}
+
+.tk-drawer-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #25f4ee 0%, #fe2c55 100%);
+    color: #0f0f0f;
+    font-weight: 800;
+    font-size: 0.72rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.tk-drawer-form input {
+    flex: 1;
+    min-width: 0;
+    height: 40px;
+    border-radius: 20px;
+    border: none;
+    background: rgba(255, 255, 255, 0.09);
+    color: #fff;
+    padding: 0 16px;
     font-size: 0.9rem;
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-    .app-header {
-        padding: 8px 12px;
+.tk-drawer-form input:focus {
+    outline: none;
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.tk-comment {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+.tk-comment-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #0f0f0f;
+    background: linear-gradient(135deg, #25f4ee 0%, #fe2c55 100%);
+    user-select: none;
+}
+
+.tk-comment-body {
+    min-width: 0;
+    flex: 1;
+}
+
+.tk-comment-name {
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+    line-height: 1.25;
+}
+
+.tk-comment-text {
+    font-size: 0.9rem;
+    color: #fff;
+    line-height: 1.35;
+    word-break: break-word;
+    margin-top: 2px;
+}
+
+.tk-comment-meta {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 6px;
+    font-size: 0.72rem;
+    color: rgba(255, 255, 255, 0.42);
+}
+
+.tk-comment-reply {
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.55);
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: default;
+}
+
+.tk-comment-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.66rem;
+    padding-top: 2px;
+}
+
+.tk-comment-actions i {
+    font-size: 0.95rem;
+}
+
+.tk-comment-delete {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.38);
+    cursor: pointer;
+    padding: 2px;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+    align-self: center;
+}
+
+.tk-comment-delete:hover {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.tk-drawer-send {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--accent-blue);
+    font-size: 1.15rem;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+/* TikTok progress: thin, always at the very bottom of the frame */
+body.mode-tiktok .custom-controls-overlay {
+    background: transparent;
+    padding: 0;
+    z-index: 35;
+}
+
+body.mode-tiktok .controls-row {
+    display: none;
+}
+
+body.mode-tiktok .progress-container {
+    height: 3px;
+    margin: 0 auto;
+    width: calc(100% - 16px);
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.13); /* the unfilled part sits well below the white fill */
+}
+
+body.mode-tiktok .progress-played {
+    background: #ffffff;
+    opacity: 1;
+    z-index: 1;
+}
+
+body.mode-tiktok .progress-hover {
+    background: rgba(255, 255, 255, 0.6);
+}
+
+body.mode-tiktok .progress-container:hover {
+    height: 4px;
+}
+
+body.mode-tiktok .progress-scrubber,
+body.mode-tiktok .progress-tooltip,
+body.mode-tiktok .seek-preview {
+    display: none !important;
+}
+
+body.mode-tiktok .subtitle-overlay {
+    bottom: 64px;
+    font-size: 1.05rem;
+}
+
+/* ============================================================
+   Toast
+   ============================================================ */
+.toast {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translate(-50%, 12px);
+    background: #f1f1f1;
+    color: #0f0f0f;
+    font-size: 0.88rem;
+    font-weight: 500;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    max-width: min(480px, calc(100vw - 40px));
+    text-align: center;
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
+.pitch-row {
+    padding: 12px 2px 2px;
+    margin-top: 12px;
+}
+
+/* ============================================================
+   MODE VISIBILITY — which chrome belongs to which mode
+   (single source of truth, order matters)
+   ============================================================ */
+.yt-only,
+.tk-only,
+.youtube-only {
+    display: none;
+}
+
+/* YouTube mode */
+body.mode-youtube #yt-info.yt-only {
+    display: block;
+}
+
+body.mode-youtube #yt-sidebar.yt-only {
+    display: block;
+}
+
+body.mode-youtube .youtube-only {
+    display: flex; /* control-btn theater button */
+}
+
+/* TikTok mode: chrome overlays */
+body.mode-tiktok .tk-rail {
+    display: flex;
+}
+
+body.mode-tiktok .tk-info {
+    display: flex;
+}
+
+/* Idle / open sheet: fade the disc together with the rail */
+body.idle .tk-disc,
+.player-wrapper.tk-sheet-open .tk-disc {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* ============================================================
+   Responsive
+   ============================================================ */
+@media (max-width: 1200px) {
+    .yt-grid {
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: 18px;
+        padding: 12px 16px 48px;
     }
-    .logo span {
+
+
+}
+
+@media (max-width: 1024px) {
+    .yt-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .yt-sidebar {
+        margin-top: 8px;
+    }
+
+    .suggest-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 16px;
+    }
+
+    .suggest-item {
+        flex-direction: column;
+    }
+
+    .suggest-thumb {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 16 / 9;
+    }
+
+    .header-center {
+        max-width: none;
+    }
+}
+
+@media (max-width: 820px) {
+    .search-box {
         display: none;
     }
-    .controls-row {
-        gap: 6px;
+
+    .open-pill-text {
+        display: none;
     }
+
+    .open-pill {
+        width: 36px;
+        padding: 0;
+        border-radius: 50%;
+        justify-content: center;
+    }
+
+    .logo-text {
+        display: none;
+    }
+
+    .header-left, .header-right {
+        min-width: 0;
+    }
+}
+
+@media (max-width: 1350px) {
+    .mode-pill-btn span {
+        display: none;
+    }
+
+    .mode-pill-btn {
+        padding: 0 12px;
+    }
+}
+
+@media (max-width: 640px) {
+    .mode-pill-btn span {
+        display: none;
+    }
+
+    .mode-pill-btn {
+        padding: 0 10px;
+    }
+
+    .controls-left, .controls-right {
+        gap: 2px;
+    }
+
+    #volume-slider,
+    .boost-btn,
+    #btn-prev-frame,
+    #btn-next-frame {
+        display: none;
+    }
+
     .time-display {
         font-size: 0.75rem;
     }
+
+    .settings-menu {
+        right: 8px;
+        bottom: 60px;
+    }
+
+    .yt-actions .yt-action span {
+        display: none;
+    }
+
+    .yt-action {
+        padding: 0 12px;
+    }
+
+    .yt-title {
+        font-size: 1.05rem;
+    }
+}
+
+/* ============================================================
+   Auto quality system (canvas-proxied downscale) + close button
+   ============================================================ */
+.quality-canvas {
+    display: none;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+    z-index: 5;
+}
+
+.quality-canvas.active {
+    display: block;
+}
+
+/* Source video kept playing invisibly while the canvas renders a low tier */
+#video-element.video-proxied {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.quality-main {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 3px;
+    line-height: 1.15;
+}
+
+/* HD / 4K — надстрочные, справа от названия качества */
+.quality-overline {
+    order: 2;
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: rgba(255, 255, 255, 0.55);
+    text-transform: uppercase;
+    margin-top: 1px;
+    line-height: 1;
+}
+
+.quality-name {
+    font-size: 0.9rem;
+    font-weight: 400;
+    color: #fff;
+}
+
+.settings-option.quality-original .quality-name {
+    font-weight: 700;
+}
+
+.settings-option.inert-note {
+    cursor: default;
+    color: var(--text-secondary);
+}
+
+/* Close video — unobtrusive top-right button inside the player */
+.close-video-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 15;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.55);
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 1rem;
+    cursor: pointer;
+    opacity: 0.85;
+    transition: background 0.2s ease, opacity 0.2s ease, transform 0.15s ease;
+}
+
+.close-video-btn:hover {
+    background: rgba(0, 0, 0, 0.78);
+    opacity: 1;
+}
+
+.close-video-btn:active {
+    transform: scale(0.92);
+}
+
+body.idle .close-video-btn {
+    opacity: 0;
+    pointer-events: none;
+}
+
+@media (max-width: 640px) {
+    .close-video-btn {
+        width: 32px;
+        height: 32px;
+        top: 8px;
+        right: 8px;
+    }
+
+    .open-pill {
+        padding: 0 10px;
+        gap: 6px;
+    }
+
+    .open-pill .open-pill-text {
+        font-size: 0.78rem;
+    }
+}
+
+/* Theater button — the same empty rectangle, stretched wide in theater mode */
+#theater-icon {
+    transform: scaleX(1.3);
+    transition: transform 0.18s ease;
+}
+
+#btn-theater.active #theater-icon {
+    transform: scaleX(1.55);
+}
+
+/* Sleep timer options — sub-line under «По окончании видео» */
+.settings-option-sub {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.42);
+    margin-top: 3px;
+    letter-spacing: 0.1px;
+}
+
+.sleep-options {
+    max-height: 320px;
+}
+
+/* TikTok comment drawer & backdrop exist only in TikTok mode */
+.tk-drawer,
+.tk-backdrop {
+    display: none;
+}
+
+body.mode-tiktok .tk-drawer {
+    display: flex;
+}
+
+body.mode-tiktok .tk-backdrop {
+    display: block;
+}
+
+/* Stats-for-nerds panel never shows in TikTok mode */
+body.mode-tiktok .stats-overlay {
+    display: none !important;
+}
+
+/* TikTok empty state for the comments drawer */
+.tk-comment-empty {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 0.85rem;
+    padding: 28px 12px;
+}
+
+/* ============================================================
+   TikTok-style embedded sheet for the settings sub-views:
+   rounded top, drag handle, same 9:16 width as the share sheet
+   ============================================================ */
+#settings-menu.as-sheet {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    width: auto;
+    max-width: none;
+    border-radius: 16px 16px 0 0;
+    background: #161616;
+    backdrop-filter: none;
+    z-index: 46;
+    max-height: min(74%, 580px);
+    overflow-y: auto;
+    padding-top: 2px;
+    animation: sheetUp 0.3s cubic-bezier(0.32, 0.72, 0.35, 1);
+}
+
+#settings-menu.as-sheet::before {
+    content: '';
+    display: block;
+    width: 38px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.28);
+    margin: 8px auto 4px;
+}
+
+#settings-menu.as-sheet .settings-submenu-header {
+    padding-top: 2px;
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+#settings-menu.as-sheet .settings-option {
+    /* same left gutter as the desktop menu, so the ✓ never lands on the text */
+    padding-left: 46px;
+    padding-right: 22px;
+    min-height: 46px;
+}
+
+@keyframes sheetUp {
+    from { transform: translateY(105%); }
+    to   { transform: none; }
+}
+
+/* Fullscreen: PiP and theater make no sense there — hide them */
+#player-wrapper:fullscreen #btn-pip,
+#player-wrapper:fullscreen #btn-theater,
+#player-wrapper:-webkit-full-screen #btn-pip,
+#player-wrapper:-webkit-full-screen #btn-theater {
+    display: none;
+}
+
+/* ============================================================
+   «Статистика для сисадминов» — dark translucent panel, top-left,
+   small radius, ✕ in the corner; toggled from the right-click menu
+   ============================================================ */
+.stats-overlay {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 36;
+    width: max-content;
+    max-width: min(460px, calc(100% - 24px));
+    max-height: calc(100% - 24px);
+    overflow: auto;
+    background: rgba(22, 22, 22, 0.86);
+    border-radius: 6px;
+    padding: 10px 13px 12px;
+    color: #e5e5e5;
+    font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.55;
+    box-shadow: 0 6px 26px rgba(0, 0, 0, 0.55);
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: default;
+}
+
+.stats-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 7px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+    padding-bottom: 7px;
+}
+
+.stats-title {
+    font-weight: 700;
+    font-size: 11.5px;
+    color: #fff;
+    letter-spacing: 0.2px;
+}
+
+.stats-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #bdbdbd;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.stats-close:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 3px 16px;
+}
+
+.stats-label {
+    color: #9aa0a6;
+    white-space: nowrap;
+}
+
+.stats-value {
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    min-width: 0;
+}
+
+/* Custom right-click menu inside the player */
+.context-menu {
+    position: fixed;
+    z-index: 80;
+    min-width: 264px;
+    background: rgba(28, 28, 28, 0.97);
+    border-radius: 10px;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.6);
+    padding: 6px;
+    animation: contextMenuIn 0.12s ease;
+}
+
+@keyframes contextMenuIn {
+    from { opacity: 0; transform: translateY(-3px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 9px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 400;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.context-menu-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.context-menu-check {
+    width: 18px;
+    text-align: center;
+    color: #3ea6ff;
+    visibility: hidden;
+    flex-shrink: 0;
+}
+
+.context-menu-icon {
+    width: 16px;
+    display: inline-flex;
+    justify-content: center;
+    color: #9a9a9a;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+
+.context-menu-item[aria-checked="true"] .context-menu-check {
+    visibility: visible;
+}
+
+/* ============================================================
+   TikTok paused indicator — static, small, white · 40% opacity,
+   zero animation; simply vanishes on unpause
+   ============================================================ */
+.tk-paused-badge {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 24;
+    width: 74px;
+    height: 74px;
+    border-radius: 18px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.4);
+    pointer-events: none;
+    user-select: none;
+}
+
+.tk-paused-badge i {
+    font-size: 3.4rem;
+    line-height: 1;
+    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.45);
+}
+
+.tk-paused-badge.visible {
+    display: flex;
+}
+
+.icon-pm {
+    display: block;
+    width: 1.05em;
+    height: 1.05em;
+    pointer-events: none;
+}
+
+.speed-step-btn .icon-pm {
+    width: 1.1em;
+    height: 1.1em;
 }
