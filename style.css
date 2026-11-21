@@ -1791,8 +1791,33 @@ input:checked + .slider-toggle:before {
 }
 
 .settings-options {
+    max-height: none;
+    overflow-y: visible;
+}
+
+/* Only subtitle tracks may scroll; keep their scrollbar discreet and dark. */
+#settings-subtitles-menu .settings-options {
     max-height: 264px;
     overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.24) rgba(0, 0, 0, 0.22);
+}
+
+#settings-subtitles-menu .settings-options::-webkit-scrollbar {
+    width: 5px;
+}
+
+#settings-subtitles-menu .settings-options::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.22);
+}
+
+#settings-subtitles-menu .settings-options::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.24);
+    border-radius: 4px;
+}
+
+#settings-subtitles-menu .settings-options::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.38);
 }
 
 .settings-option {
@@ -3702,7 +3727,8 @@ body.idle .close-video-btn {
 }
 
 .sleep-options {
-    max-height: 320px;
+    max-height: none;
+    overflow-y: visible;
 }
 
 /* TikTok comment drawer & backdrop exist only in TikTok mode */
