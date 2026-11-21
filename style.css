@@ -1581,7 +1581,7 @@ body.studio-light .ambient-canvas {
 
 /* Section switch = the box itself deforms smoothly to the new size */
 .settings-menu.morphing {
-    transition: width 0.32s cubic-bezier(0.25, 0.8, 0.3, 1), height 0.32s cubic-bezier(0.25, 0.8, 0.3, 1);
+    transition: width 0.36s cubic-bezier(0.22, 0.61, 0.36, 1), height 0.36s cubic-bezier(0.22, 0.61, 0.36, 1);
     will-change: width, height;
 }
 
@@ -1616,19 +1616,19 @@ body.studio-light .ambient-canvas {
 }
 
 .settings-view.is-leaving-to-left {
-    animation: settingsLeaveToLeft 0.28s cubic-bezier(0.4, 0, 0.2, 1) both;
+    animation: settingsLeaveToLeft 0.36s cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
 
 .settings-view.is-leaving-to-right {
-    animation: settingsLeaveToRight 0.28s cubic-bezier(0.4, 0, 0.2, 1) both;
+    animation: settingsLeaveToRight 0.36s cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
 
 .settings-view.is-entering-from-right {
-    animation: settingsEnterFromRight 0.28s cubic-bezier(0.4, 0, 0.2, 1) both;
+    animation: settingsEnterFromRight 0.36s cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
 
 .settings-view.is-entering-from-left {
-    animation: settingsEnterFromLeft 0.28s cubic-bezier(0.4, 0, 0.2, 1) both;
+    animation: settingsEnterFromLeft 0.36s cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
 
 @keyframes settingsLeaveToLeft {

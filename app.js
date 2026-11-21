@@ -4371,7 +4371,7 @@ void main() {
             settingsMenu.classList.remove('morphing');
             settingsMenu.style.width = '';
             settingsMenu.style.height = '';
-        }, 310);
+        }, 390);
     }
 
     settingsMenu.querySelectorAll('.settings-item[data-action]').forEach((item) => {
